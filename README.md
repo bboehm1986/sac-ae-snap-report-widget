@@ -28,11 +28,12 @@ surfaces these as a standing notice until they're settled.
   breakdown, a Synod/Region breakdown, a YoY change-rate breakdown, and a
   hand-rolled inline SVG timeline bar chart (10/1–10/14, no external chart
   library — SAC widget iframes are CSP-strict). Light theme only (see Known
-  limitations below — a dark/light toggle was tried and dropped), a "Mock
-  Data — Preview" badge that flips to "Live" once real data is bound, and
-  client-side Status / Synod-Region filters over whatever's currently bound.
-  Falls back to built-in mock data when no data binding is bound, so the
-  whole layout is reviewable standalone.
+  limitations below — a dark/light toggle was tried and dropped), and a
+  "Mock Data — Preview" badge that flips to "Live" once real data is bound.
+  **No in-widget filter controls** — see Known limitations; filtering is
+  meant to happen via a native SAC Input Control instead. Falls back to
+  built-in mock data when no data binding is bound, so the whole layout is
+  reviewable standalone.
 - `icon.svg` — icon shown in the SAC widget panel.
 - `preview.html` — standalone local test harness; loads `main.js` and drives
   the widget through the same `onCustomWidgetBeforeUpdate` /
@@ -65,21 +66,23 @@ ruling out a JS bug. This isn't something fixable from the widget's own code
 events into a custom widget's shadow DOM, at least not in this
 configuration.
 
-**Consequence:** the dark/light theme toggle was removed entirely (dropped
-2026-08-28) rather than ship a control that only works in Edit mode — the
-widget now renders light theme only. The **Status / Synod-Region filter
-dropdowns are still present in the code and still visually functional in
-Edit mode, but have the identical problem in View mode** — they're not yet
-removed or replaced, since that's a slightly bigger decision (see below).
+**Consequence, resolved 2026-08-28:** both the dark/light theme toggle and
+the Status/Synod-Region filter dropdowns were removed from the widget
+entirely, rather than ship controls that only work in Edit mode. The widget
+now renders light theme only, with no in-widget filter UI at all — it's a
+pure display component that renders whatever data currently arrives through
+its three data bindings via `onCustomWidgetAfterUpdate` (confirmed working
+correctly end-to-end, independent of this issue).
 
-**Recommended next step, not yet done:** replace the in-widget filters with
-SAC's native **Input Control** widget wired to the Story's actual data
-source(s) — that's SAP's own supported filtering mechanism and doesn't
-depend on a custom widget receiving internal events at all. The widget would
-then be purely a display component reacting to `onCustomWidgetAfterUpdate`,
-which is already confirmed to work correctly end-to-end. Worth raising the
-underlying platform behavior with SAP support/community separately, but
-don't block on that.
+**Filtering now happens entirely in SAC**, not in the widget: place a native
+**Input Control** on the Story, wire it to the underlying data source(s),
+and SAC handles re-querying and pushing the filtered result set into the
+widget's bindings — no custom-widget-side code needed for that, and it isn't
+subject to the View-mode limitation above since it's SAP's own supported
+control, not something drawn inside our shadow DOM. Worth raising the
+underlying platform behavior with SAP support/community separately (see
+the issue writeup shared alongside this doc), but no need to block on that
+to move forward.
 
 ## 1. Preview locally (no SAC needed)
 

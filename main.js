@@ -32,9 +32,16 @@
 
     Until these are wired to real Datasphere-backed models, the widget
     renders from the MOCK_* constants below so the layout can be built and
-    reviewed standalone (see preview.html). The Status and Synod/Region
-    filters below operate client-side over whatever's currently bound (or
-    mocked) — they don't re-query SAC.
+    reviewed standalone (see preview.html).
+
+    No in-widget filter controls by design: SAC's Optimized-story View mode
+    doesn't deliver internal click/change events to a custom widget's shadow
+    DOM (confirmed by testing — see README "Known limitation"), so any
+    filter UI this widget drew itself would work in Edit mode and silently
+    do nothing for the people actually viewing the Story. Filtering belongs
+    in SAC's native Input Control, wired to the underlying data source(s) —
+    this widget just renders whatever (already-filtered) data arrives
+    through the three data bindings above.
 */
 (function () {
     "use strict";
@@ -108,10 +115,9 @@
                 font-family: "72", "Segoe UI", Arial, sans-serif;
 
                 /* Light mode only — SAC's View mode doesn't deliver internal
-                   click/change events to this widget (confirmed: identical
-                   behavior for the theme toggle and the filter dropdowns
-                   below), so a manual dark/light toggle can't work there.
-                   Dropped rather than shipped broken; see README. */
+                   click/change events to this widget, so a manual dark/light
+                   toggle couldn't work there. Dropped rather than shipped
+                   broken; see README. */
                 --bg: #f5f6fa;
                 --surface: #ffffff;
                 --surface-2: #eef0f5;
@@ -177,35 +183,6 @@
             .badge.accent { color: var(--accent); border-color: var(--accent); background: var(--accent-bg); }
             .badge.warning { color: var(--warning); border-color: var(--warning); background: var(--warning-bg); }
             .asof { font-size: 11px; color: var(--text-soft); margin-top: 2px; }
-
-            /* ---- Filters ---- */
-            .filters {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 16px;
-                align-items: center;
-                margin-bottom: 16px;
-                padding-bottom: 14px;
-                border-bottom: 1px solid var(--border);
-            }
-            .filter-field { display: flex; flex-direction: column; gap: 4px; }
-            .filter-field label {
-                font-size: 10px;
-                font-weight: 600;
-                letter-spacing: 0.06em;
-                text-transform: uppercase;
-                color: var(--text-soft);
-            }
-            .filter-field select {
-                font-family: inherit;
-                font-size: 12.5px;
-                color: var(--text);
-                background: var(--surface);
-                border: 1px solid var(--border);
-                border-radius: 6px;
-                padding: 6px 10px;
-                min-width: 150px;
-            }
 
             /* ---- Section titles ---- */
             .section-title {
@@ -335,22 +312,6 @@
                 </div>
             </div>
 
-            <div class="filters">
-                <div class="filter-field">
-                    <label for="statusFilter">Status</label>
-                    <select id="statusFilter">
-                        <option value="All">All</option>
-                        <option value="Completed">Completed</option>
-                        <option value="Open">Non-Completed</option>
-                        <option value="Defaulted">Defaulted</option>
-                    </select>
-                </div>
-                <div class="filter-field">
-                    <label for="synodFilter">Synod / Region</label>
-                    <select id="synodFilter"><option value="All">All</option></select>
-                </div>
-            </div>
-
             <div class="section-title">Employer Selection</div>
             <div class="grid" id="employerTiles"></div>
 
@@ -390,11 +351,9 @@
             this._dailyCounts = MOCK_DAILY_COUNTS;
             this._yoyComparison = MOCK_YOY;
             this._usingMockData = true;
-            this._filters = { status: "All", synod: "All" };
         }
 
         connectedCallback() {
-            this._bindControls();
             this._render();
         }
 
@@ -420,38 +379,6 @@
             this._render();
         }
 
-        // ---- Controls (wired once; re-read state each render) ----
-        _bindControls() {
-            const root = this._shadowRoot;
-
-            // If SAC's Story canvas has its own document-level click/change
-            // handling (e.g. for widget selection), it can act on our
-            // controls' events after they've already reached us. Stopping
-            // propagation in the BUBBLE phase, on each control itself, lets
-            // our own listener run first and normally, then keeps the event
-            // from continuing further up past this widget. (A capture-phase
-            // listener on an ancestor would instead block the event from
-            // ever reaching these controls at all — tried that, confirmed it
-            // breaks things, removed it.)
-            //
-            // Note: confirmed in SAC's Optimized-story View mode, neither
-            // this nor the filter listeners below actually receive events at
-            // all — SAC isn't delivering them to the widget's internal DOM
-            // in that mode. Left in place since it's harmless and still
-            // works in Edit mode / standalone preview; see README.
-
-            root.getElementById("statusFilter").addEventListener("change", (e) => {
-                e.stopPropagation();
-                this._filters.status = e.target.value;
-                this._render();
-            });
-            root.getElementById("synodFilter").addEventListener("change", (e) => {
-                e.stopPropagation();
-                this._filters.synod = e.target.value;
-                this._render();
-            });
-        }
-
         // ---- Parsing helpers ----
         _dim(r, i) {
             const d = r["dimensions_" + i];
@@ -460,13 +387,6 @@
         _measure(r, i) {
             const m = r["measures_" + i];
             return m ? Number(m.raw) : 0;
-        }
-
-        _availableSynods() {
-            const rows = (this._employerStatus && this._employerStatus.data) || [];
-            const set = new Set();
-            rows.forEach((r) => { const s = this._dim(r, 1); if (s) set.add(s); });
-            return Array.from(set).sort();
         }
 
         _statusBucket(status) {
@@ -481,7 +401,6 @@
             const bySynod = {};
             const byElectionType = {};
             let totalSetUp = 0, completed = 0, defaulted = 0, open = 0;
-            const { status: statusFilter, synod: synodFilter } = this._filters;
 
             rows.forEach((r) => {
                 const status = this._dim(r, 0);
@@ -494,9 +413,7 @@
                     return; // election sub-type rows don't count toward status totals
                 }
 
-                if (synodFilter !== "All" && synod !== synodFilter) return;
                 const bucket = this._statusBucket(status);
-                if (statusFilter !== "All" && bucket !== statusFilter) return;
 
                 totalSetUp += employerCount;
                 if (bucket === "Completed") completed += employerCount;
@@ -568,17 +485,6 @@
 
             root.getElementById("asof").textContent = "As of: " + (this._props.asOfLabel || "Live");
             root.getElementById("dataBadge").textContent = this._usingMockData ? "Mock Data — Preview" : "Live";
-
-            // Filter controls — populate synod options once data is known, preserve selection
-            const synodSelect = root.getElementById("synodFilter");
-            const synods = this._availableSynods();
-            const desiredOptions = ["All", ...synods];
-            const currentOptions = Array.from(synodSelect.options).map((o) => o.value);
-            if (currentOptions.join("|") !== desiredOptions.join("|")) {
-                synodSelect.innerHTML = desiredOptions.map((s) => `<option value="${s}">${s}</option>`).join("");
-            }
-            synodSelect.value = this._filters.synod;
-            root.getElementById("statusFilter").value = this._filters.status;
 
             // Employer Selection tiles
             const tilesHtml = [
