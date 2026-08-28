@@ -27,12 +27,12 @@ surfaces these as a standing notice until they're settled.
   Defaulted) with per-tile progress bars, an Of-Complete election-type
   breakdown, a Synod/Region breakdown, a YoY change-rate breakdown, and a
   hand-rolled inline SVG timeline bar chart (10/1–10/14, no external chart
-  library — SAC widget iframes are CSP-strict). Dark theme by default with a
-  light-mode toggle (`data-theme="light"` on the host element), a "Mock Data
-  — Preview" badge that flips to "Live" once real data is bound, and
+  library — SAC widget iframes are CSP-strict). Light theme only (see Known
+  limitations below — a dark/light toggle was tried and dropped), a "Mock
+  Data — Preview" badge that flips to "Live" once real data is bound, and
   client-side Status / Synod-Region filters over whatever's currently bound.
   Falls back to built-in mock data when no data binding is bound, so the
-  whole layout — filters, theme toggle, and all — is reviewable standalone.
+  whole layout is reviewable standalone.
 - `icon.svg` — icon shown in the SAC widget panel.
 - `preview.html` — standalone local test harness; loads `main.js` and drives
   the widget through the same `onCustomWidgetBeforeUpdate` /
@@ -46,10 +46,40 @@ surfaces these as a standing notice until they're settled.
 
 - ✅ Widget scaffold, layout, and rendering logic — done, verified locally
   against mock data (see `preview.html`).
+- ✅ Hosted on GitHub Pages, registered in SAC, confirmed rendering on the
+  Story canvas in both Edit and View mode on mock data.
+- ⚠️ Known limitation found during that testing — see below.
 - ⏳ Datasphere views — **not built yet**. `DATASPHERE_VIEW_SPEC.md` is a
   handoff spec; the actual views need SAP Datasphere Web IDE access (see
   spec's "Next steps" section).
 - ⏳ SAC model + data binding — blocked on the above.
+
+## Known limitation: no internal interactivity in View mode
+
+Confirmed by testing directly in SAC (Optimized story): the widget's
+internal `<button>`/`<select>` controls receive click/change events normally
+in **Edit** mode, but **View** mode delivers none of them — confirmed via a
+completely silent DevTools console on click (no error, no log, nothing),
+ruling out a JS bug. This isn't something fixable from the widget's own code
+— SAC's Optimized-story View mode apparently doesn't forward internal DOM
+events into a custom widget's shadow DOM, at least not in this
+configuration.
+
+**Consequence:** the dark/light theme toggle was removed entirely (dropped
+2026-08-28) rather than ship a control that only works in Edit mode — the
+widget now renders light theme only. The **Status / Synod-Region filter
+dropdowns are still present in the code and still visually functional in
+Edit mode, but have the identical problem in View mode** — they're not yet
+removed or replaced, since that's a slightly bigger decision (see below).
+
+**Recommended next step, not yet done:** replace the in-widget filters with
+SAC's native **Input Control** widget wired to the Story's actual data
+source(s) — that's SAP's own supported filtering mechanism and doesn't
+depend on a custom widget receiving internal events at all. The widget would
+then be purely a display component reacting to `onCustomWidgetAfterUpdate`,
+which is already confirmed to work correctly end-to-end. Worth raising the
+underlying platform behavior with SAP support/community separately, but
+don't block on that.
 
 ## 1. Preview locally (no SAC needed)
 
