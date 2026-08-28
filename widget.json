@@ -1,0 +1,83 @@
+{
+    "id": "com.porticobenefits.aesnapreport",
+    "name": "AE Snap Report",
+    "version": "1.0.0",
+    "vendor": "Portico Benefits",
+    "license": "",
+    "eula": "",
+    "description": "Daily high-level dashboard of Annual Enrollment progress: employer selection status, election-type breakdown, daily timeline, YoY comparison, and Synod/Region breakdown.",
+    "newInstancePrefix": "AESnapReport",
+    "icon": "https://bboehm1986.github.io/sac-ae-snap-report-widget/icon.svg",
+    "webcomponents": [
+        {
+            "kind": "main",
+            "tag": "com-porticobenefits-aesnapreport",
+            "url": "https://bboehm1986.github.io/sac-ae-snap-report-widget/main.js",
+            "integrity": "sha384-etMcPE51NWRmXdFR+EEwfcBmYgTskkxE+6JecmMxm7iNF3knZUp5g/k0HjqMNY6S"
+        }
+    ],
+    "properties": {
+        "width": {
+            "type": "integer",
+            "default": 900
+        },
+        "height": {
+            "type": "integer",
+            "default": 600
+        },
+        "asOfLabel": {
+            "type": "string",
+            "default": "Live"
+        }
+    },
+    "dataBindings": {
+        "employerStatus": {
+            "feeds": [
+                {
+                    "id": "dimensions",
+                    "description": "Status / Synod-Region / Election Sub-Type",
+                    "type": "dimension"
+                },
+                {
+                    "id": "measures",
+                    "description": "Employer Count, Employee Count",
+                    "type": "mainStructureMembers"
+                }
+            ]
+        },
+        "dailyCounts": {
+            "feeds": [
+                {
+                    "id": "dimensions",
+                    "description": "Date / State Tag",
+                    "type": "dimension"
+                },
+                {
+                    "id": "measures",
+                    "description": "Member Count",
+                    "type": "mainStructureMembers"
+                }
+            ]
+        },
+        "yoyComparison": {
+            "feeds": [
+                {
+                    "id": "dimensions",
+                    "description": "Benefit Type / Changed Flag",
+                    "type": "dimension"
+                },
+                {
+                    "id": "measures",
+                    "description": "Member Count",
+                    "type": "mainStructureMembers"
+                }
+            ]
+        }
+    },
+    "methods": {
+        "refresh": {
+            "description": "Re-renders the dashboard from the currently bound data"
+        }
+    },
+    "events": {}
+}
