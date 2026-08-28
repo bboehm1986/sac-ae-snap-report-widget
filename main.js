@@ -107,25 +107,11 @@
                 box-sizing: border-box;
                 font-family: "72", "Segoe UI", Arial, sans-serif;
 
-                /* ---- Dark theme (default) ---- */
-                --bg: #0b0c12;
-                --surface: #14161f;
-                --surface-2: #1a1d29;
-                --border: #262a3a;
-                --text: #f2f3f7;
-                --text-soft: #9096a8;
-                --accent: #8b7cf6;
-                --accent-bg: rgba(139, 124, 246, 0.14);
-                --success: #2dd4a7;
-                --success-bg: rgba(45, 212, 167, 0.14);
-                --warning: #f0b429;
-                --warning-bg: rgba(240, 180, 41, 0.14);
-                --info: #5b8def;
-                --info-bg: rgba(91, 141, 239, 0.14);
-                --danger: #ef6f6f;
-                --danger-bg: rgba(239, 111, 111, 0.14);
-            }
-            :host([data-theme="light"]) {
+                /* Light mode only — SAC's View mode doesn't deliver internal
+                   click/change events to this widget (confirmed: identical
+                   behavior for the theme toggle and the filter dropdowns
+                   below), so a manual dark/light toggle can't work there.
+                   Dropped rather than shipped broken; see README. */
                 --bg: #f5f6fa;
                 --surface: #ffffff;
                 --surface-2: #eef0f5;
@@ -190,19 +176,6 @@
             }
             .badge.accent { color: var(--accent); border-color: var(--accent); background: var(--accent-bg); }
             .badge.warning { color: var(--warning); border-color: var(--warning); background: var(--warning-bg); }
-            .theme-toggle {
-                font-family: inherit;
-                font-size: 12px;
-                font-weight: 600;
-                color: var(--text);
-                background: var(--surface);
-                border: 1px solid var(--border);
-                border-radius: 100px;
-                padding: 6px 12px;
-                cursor: pointer;
-                flex: none;
-            }
-            .theme-toggle:hover { border-color: var(--accent); }
             .asof { font-size: 11px; color: var(--text-soft); margin-top: 2px; }
 
             /* ---- Filters ---- */
@@ -360,7 +333,6 @@
                     </div>
                     <div class="asof" id="asof"></div>
                 </div>
-                <button class="theme-toggle" id="themeToggle" type="button">☾ Dark</button>
             </div>
 
             <div class="filters">
@@ -419,7 +391,6 @@
             this._yoyComparison = MOCK_YOY;
             this._usingMockData = true;
             this._filters = { status: "All", synod: "All" };
-            this._theme = "dark";
         }
 
         connectedCallback() {
@@ -462,12 +433,13 @@
             // listener on an ancestor would instead block the event from
             // ever reaching these controls at all — tried that, confirmed it
             // breaks things, removed it.)
+            //
+            // Note: confirmed in SAC's Optimized-story View mode, neither
+            // this nor the filter listeners below actually receive events at
+            // all — SAC isn't delivering them to the widget's internal DOM
+            // in that mode. Left in place since it's harmless and still
+            // works in Edit mode / standalone preview; see README.
 
-            root.getElementById("themeToggle").addEventListener("click", (e) => {
-                e.stopPropagation();
-                this._theme = this._theme === "dark" ? "light" : "dark";
-                this._applyTheme();
-            });
             root.getElementById("statusFilter").addEventListener("change", (e) => {
                 e.stopPropagation();
                 this._filters.status = e.target.value;
@@ -478,15 +450,6 @@
                 this._filters.synod = e.target.value;
                 this._render();
             });
-        }
-
-        _applyTheme() {
-            if (this._theme === "light") {
-                this.setAttribute("data-theme", "light");
-            } else {
-                this.removeAttribute("data-theme");
-            }
-            this._shadowRoot.getElementById("themeToggle").textContent = this._theme === "light" ? "☀ Light" : "☾ Dark";
         }
 
         // ---- Parsing helpers ----
