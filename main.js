@@ -452,15 +452,29 @@
         // ---- Controls (wired once; re-read state each render) ----
         _bindControls() {
             const root = this._shadowRoot;
-            root.getElementById("themeToggle").addEventListener("click", () => {
+
+            // If SAC's Story canvas has its own document-level click/change
+            // handling (e.g. for widget selection), it can act on our
+            // controls' events after they've already reached us. Stopping
+            // propagation in the BUBBLE phase, on each control itself, lets
+            // our own listener run first and normally, then keeps the event
+            // from continuing further up past this widget. (A capture-phase
+            // listener on an ancestor would instead block the event from
+            // ever reaching these controls at all — tried that, confirmed it
+            // breaks things, removed it.)
+
+            root.getElementById("themeToggle").addEventListener("click", (e) => {
+                e.stopPropagation();
                 this._theme = this._theme === "dark" ? "light" : "dark";
                 this._applyTheme();
             });
             root.getElementById("statusFilter").addEventListener("change", (e) => {
+                e.stopPropagation();
                 this._filters.status = e.target.value;
                 this._render();
             });
             root.getElementById("synodFilter").addEventListener("change", (e) => {
+                e.stopPropagation();
                 this._filters.synod = e.target.value;
                 this._render();
             });

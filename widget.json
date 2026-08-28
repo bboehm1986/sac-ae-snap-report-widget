@@ -13,7 +13,7 @@
             "kind": "main",
             "tag": "com-porticobenefits-aesnapreport",
             "url": "https://bboehm1986.github.io/sac-ae-snap-report-widget/main.js",
-            "integrity": "sha384-etMcPE51NWRmXdFR+EEwfcBmYgTskkxE+6JecmMxm7iNF3knZUp5g/k0HjqMNY6S"
+            "integrity": "sha384-eYB//yG0b2LfL97ODyYWSKzjuiZfPkcTrk8jI7F5BQJgNj4p9BUvlWK5RT6wF7g/"
         }
     ],
     "properties": {
@@ -41,7 +41,7 @@
                 {
                     "id": "measures",
                     "description": "Employer Count, Employee Count",
-                    "type": "mainStructureMembers"
+                    "type": "mainStructureMember"
                 }
             ]
         },
@@ -55,7 +55,7 @@
                 {
                     "id": "measures",
                     "description": "Member Count",
-                    "type": "mainStructureMembers"
+                    "type": "mainStructureMember"
                 }
             ]
         },
@@ -69,7 +69,7 @@
                 {
                     "id": "measures",
                     "description": "Member Count",
-                    "type": "mainStructureMembers"
+                    "type": "mainStructureMember"
                 }
             ]
         }
