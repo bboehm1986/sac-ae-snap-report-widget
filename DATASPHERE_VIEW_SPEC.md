@@ -175,19 +175,28 @@ the right join key with Yong Yang before building.
 These were flagged in red on the original requirements screenshot. Do not
 guess at them — confirm with the people named.
 
-1. **Membership/eligibility counts on church YoY** — screenshot says
-   "Either Venkata's datasphere view or Matt's 39" (Matt Christensen's
-   CDS-view catalogue effort — see `project_matt_christensen_cds_views`
-   memory). Needs a decision on which source to use before this tile can be
-   built.
-2. **Synod/Region access** — screenshot says "Go from ODS! Need access to
-   QA_RetAccts space for Ahmed, Blair." Note: `DS_AE_EMPLOYER_STATUS.geog`
-   already sources Synod/Region from `PORTICO.ODSPRIME_Employer` inside the
-   existing `ztbl_hcm_process3` AMDP (confirmed in the AE_Employer Election
-   catalogue entry) — once that CDS view is replicated into Datasphere, this
-   requirement may already be satisfied without the separate ODS/QA_RetAccts
-   access. Worth raising with Ahmed before pursuing that access path
-   separately, in case it's redundant.
+1. **Membership/eligibility counts on church YoY — source decided
+   2026-08-28, object not yet built:** confirmed to use Matt Christensen's
+   view ("Matt's 39") over Venkata's Datasphere view. **This is a genuine
+   timeline dependency, not an open question to research** — per Blair
+   (2026-08-28), the view is currently in progress and expected to be
+   complete "in the coming weeks." It doesn't exist yet, so there's nothing
+   to point this tile at until Matt finishes it. Once it ships, catalogue it
+   in the Data Product Catalogue (same process as the rest of the AE family)
+   before wiring it into `DS_AE_SNAP_REPORT` — don't build against it sight
+   unseen.
+2. **Synod/Region access — ServiceDesk ticket 32054.** Screenshot says "Go
+   from ODS! Need access to QA_RetAccts space for Ahmed, Blair." Note:
+   `DS_AE_EMPLOYER_STATUS.geog` already sources Synod/Region from
+   `PORTICO.ODSPRIME_Employer` inside the existing `ztbl_hcm_process3` AMDP
+   (confirmed in the AE_Employer Election catalogue entry) — once that CDS
+   view is replicated into Datasphere, this requirement may already be
+   satisfied without the separate ODS/QA_RetAccts access. Worth confirming
+   against ticket 32054 before pursuing that access path separately, in
+   case it's redundant.
+
+**Tracking:** the actual Datasphere view-build work (Section 5, steps 3–4
+below) is logged as **ServiceDesk ticket 32035**.
 
 ---
 

@@ -117,23 +117,35 @@
                 /* Light mode only — SAC's View mode doesn't deliver internal
                    click/change events to this widget, so a manual dark/light
                    toggle couldn't work there. Dropped rather than shipped
-                   broken; see README. */
-                --bg: #f5f6fa;
-                --surface: #ffffff;
-                --surface-2: #eef0f5;
-                --border: #dde1ea;
+                   broken; see README.
+
+                   Glassmorphism/depth system: frosted, semi-transparent
+                   surfaces over a soft gradient-mesh background, layered
+                   shadows for elevation. --surface/--surface-2/--border are
+                   translucent by design — see .tile/.panel for the
+                   backdrop-filter that makes them read as "glass," and the
+                   @supports fallback below for browsers without it. */
+                --mesh-1: rgba(106, 92, 240, 0.16);
+                --mesh-2: rgba(47, 111, 224, 0.12);
+                --mesh-3: rgba(20, 151, 111, 0.10);
+                --surface: rgba(255, 255, 255, 0.58);
+                --surface-solid: #ffffff;
+                --surface-2: rgba(23, 26, 35, 0.055);
+                --border: rgba(255, 255, 255, 0.65);
                 --text: #171a23;
                 --text-soft: #5b6072;
                 --accent: #6a5cf0;
-                --accent-bg: rgba(106, 92, 240, 0.10);
+                --accent-bg: rgba(106, 92, 240, 0.14);
                 --success: #14976f;
-                --success-bg: rgba(20, 151, 111, 0.10);
+                --success-bg: rgba(20, 151, 111, 0.14);
                 --warning: #a5700c;
-                --warning-bg: rgba(165, 112, 12, 0.10);
+                --warning-bg: rgba(165, 112, 12, 0.14);
                 --info: #2f6fe0;
-                --info-bg: rgba(47, 111, 224, 0.10);
+                --info-bg: rgba(47, 111, 224, 0.14);
                 --danger: #c94b4b;
-                --danger-bg: rgba(201, 75, 75, 0.10);
+                --danger-bg: rgba(201, 75, 75, 0.14);
+                --glass-blur: blur(20px) saturate(180%);
+                --shadow-card: 0 1px 1px rgba(23,26,35,0.03), 0 4px 12px -2px rgba(23,26,35,0.07), 0 14px 28px -10px rgba(23,26,35,0.10);
             }
             * { box-sizing: border-box; }
 
@@ -141,11 +153,25 @@
                 width: 100%;
                 height: 100%;
                 overflow: auto;
-                background: var(--bg);
+                background:
+                    radial-gradient(at 12% 8%, var(--mesh-1) 0%, transparent 45%),
+                    radial-gradient(at 88% 14%, var(--mesh-2) 0%, transparent 45%),
+                    radial-gradient(at 50% 100%, var(--mesh-3) 0%, transparent 50%),
+                    #f4f5fa;
                 color: var(--text);
-                border: 1px solid var(--border);
-                border-radius: 6px;
-                padding: 16px;
+                border-radius: 18px;
+                padding: 18px;
+            }
+
+            /* Glass surface, shared by every card-like element. Fallback for
+               browsers without backdrop-filter support raises the opacity
+               to near-solid so it still reads correctly, just without blur. */
+            .tile, .panel, .wave-card, .notice, .badge {
+                backdrop-filter: var(--glass-blur);
+                -webkit-backdrop-filter: var(--glass-blur);
+            }
+            @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+                .tile, .panel, .wave-card, .notice { background: rgba(255,255,255,0.94) !important; }
             }
 
             /* ---- Header ---- */
@@ -154,7 +180,7 @@
                 justify-content: space-between;
                 align-items: flex-start;
                 gap: 12px;
-                margin-bottom: 16px;
+                margin-bottom: 18px;
             }
             .eyebrow {
                 font-size: 10.5px;
@@ -180,8 +206,8 @@
                 border: 1px solid;
                 white-space: nowrap;
             }
-            .badge.accent { color: var(--accent); border-color: var(--accent); background: var(--accent-bg); }
-            .badge.warning { color: var(--warning); border-color: var(--warning); background: var(--warning-bg); }
+            .badge.accent { color: var(--accent); border-color: rgba(106,92,240,0.35); background: var(--accent-bg); }
+            .badge.warning { color: var(--warning); border-color: rgba(165,112,12,0.35); background: var(--warning-bg); }
             .asof { font-size: 11px; color: var(--text-soft); margin-top: 2px; }
 
             /* ---- Section titles ---- */
@@ -191,23 +217,24 @@
                 color: var(--text-soft);
                 text-transform: uppercase;
                 letter-spacing: 0.05em;
-                margin: 20px 0 8px;
+                margin: 22px 0 8px;
             }
 
             /* ---- KPI tiles ---- */
             .grid {
                 display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-                gap: 10px;
+                gap: 12px;
             }
             .tile {
                 background: var(--surface);
                 border: 1px solid var(--border);
-                border-radius: 8px;
+                border-radius: 14px;
                 padding: 14px;
                 display: flex;
                 flex-direction: column;
                 gap: 6px;
+                box-shadow: var(--shadow-card);
             }
             .tile .label {
                 font-size: 10px;
@@ -224,9 +251,10 @@
             }
             .tile .sub { font-size: 11px; color: var(--text-soft); margin-top: -4px; }
             .tile .bar-track {
-                height: 4px;
+                height: 5px;
                 border-radius: 4px;
                 background: var(--surface-2);
+                box-shadow: inset 0 1px 2px rgba(23,26,35,0.10);
                 overflow: hidden;
                 margin-top: 2px;
             }
@@ -243,12 +271,13 @@
             .tile.danger .bar-fill { background: var(--danger); }
 
             /* ---- Panels / breakdown rows ---- */
-            .panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+            .panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
             .panel {
                 background: var(--surface);
                 border: 1px solid var(--border);
-                border-radius: 8px;
+                border-radius: 14px;
                 padding: 14px;
+                box-shadow: var(--shadow-card);
             }
             .breakdown-row {
                 display: flex;
@@ -262,6 +291,7 @@
                 width: 7px; height: 7px;
                 border-radius: 50%;
                 background: var(--accent);
+                box-shadow: 0 0 0 3px rgba(106,92,240,0.16);
             }
             .breakdown-row .name { flex: none; width: 40%; color: var(--text); }
             .breakdown-row .track {
@@ -269,6 +299,7 @@
                 height: 6px;
                 border-radius: 4px;
                 background: var(--surface-2);
+                box-shadow: inset 0 1px 2px rgba(23,26,35,0.10);
                 overflow: hidden;
             }
             .breakdown-row .fill { height: 100%; border-radius: 4px; background: var(--accent); }
@@ -283,20 +314,21 @@
             .empty-row { font-size: 12.5px; color: var(--text-soft); padding: 4px 0; }
 
             /* ---- Timeline chart ---- */
-            .chart-grid-line { stroke: var(--border); stroke-width: 1; }
+            .chart-grid-line { stroke: rgba(23,26,35,0.08); stroke-width: 1; }
             .chart-bar-label { font-size: 9px; fill: var(--text-soft); }
             .chart-bar { fill: var(--accent); }
             .chart-bar.peak { fill: var(--success); }
 
             /* ---- Notice ---- */
             .notice {
-                margin-top: 16px;
+                margin-top: 18px;
                 background: var(--warning-bg);
-                border: 1px solid var(--warning);
-                border-radius: 8px;
+                border: 1px solid rgba(165,112,12,0.3);
+                border-radius: 14px;
                 padding: 10px 14px;
                 font-size: 11.5px;
                 color: var(--text);
+                box-shadow: var(--shadow-card);
             }
         </style>
         <div class="dashboard">
