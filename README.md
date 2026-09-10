@@ -84,6 +84,12 @@ underlying platform behavior with SAP support/community separately (see
 the issue writeup shared alongside this doc), but no need to block on that
 to move forward.
 
+**Same reasoning applies to the employer-detail download feature** (see
+`BUILD_PLAN_VWEMPLOYERSAVES.md`, "Download experience"): it's a native SAC
+Table widget with SAC's own built-in export, placed on the Story alongside
+this widget — not a button inside it. Nothing in this repo (`main.js`,
+`widget.json`) changes to support it.
+
 ## 1. Preview locally (no SAC needed)
 
 ```bash

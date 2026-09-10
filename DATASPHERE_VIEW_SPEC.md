@@ -22,6 +22,18 @@ source code, not inference.
 
 ---
 
+> **2026-09-03 — superseding update:** `DS_AE_EMPLOYER_STATUS` (§1 below)
+> is being replaced as the employer-status source. A new view,
+> `vwEmployerSaves` (catalogued 2026-09-03, Ahmed Sheikh — the
+> employer-side sibling of `vwMemberSaves`), gives a more direct path to
+> Contribution Set, HSA/HRA bundle, and election status than the SAP HCM
+> CDS chain this doc originally specified. **See
+> `BUILD_PLAN_VWEMPLOYERSAVES.md` for the build plan** — §1's
+> `DS_AE_EMPLOYER_STATUS` section below is left as-is for reference but is
+> no longer the recommended path. Timeline (§1 `DS_AE_DAILY_COUNTS`) and
+> YoY (`DS_AE_YOY_COMPARISON`) are unaffected — `vwEmployerSaves` is
+> employer-level, not member-level, so it doesn't touch those.
+
 ## 0. Changes since the first draft, and what to flag for Ahmed
 
 **What changed:** `ZVHCM_AE_004Q` and `ZVHCM_AE_005Q` were flagged "not yet
@@ -185,15 +197,12 @@ guess at them — confirm with the people named.
    in the Data Product Catalogue (same process as the rest of the AE family)
    before wiring it into `DS_AE_SNAP_REPORT` — don't build against it sight
    unseen.
-2. **Synod/Region access — ServiceDesk ticket 32054.** Screenshot says "Go
-   from ODS! Need access to QA_RetAccts space for Ahmed, Blair." Note:
-   `DS_AE_EMPLOYER_STATUS.geog` already sources Synod/Region from
-   `PORTICO.ODSPRIME_Employer` inside the existing `ztbl_hcm_process3` AMDP
-   (confirmed in the AE_Employer Election catalogue entry) — once that CDS
-   view is replicated into Datasphere, this requirement may already be
-   satisfied without the separate ODS/QA_RetAccts access. Worth confirming
-   against ticket 32054 before pursuing that access path separately, in
-   case it's redundant.
+2. ~~**Synod/Region access — ServiceDesk ticket 32054.**~~ — **Closed out
+   2026-09-09 by Blair: `ODSPRIME_Employer` access is never coming, stop
+   chasing it.** Replacement path is `vDimEmployer` (Ahmed Sheikh's
+   star-schema layer), which Ahmed is adding a Synod field to — see
+   `BUILD_PLAN_VWEMPLOYERSAVES.md` for current status and the SQL this
+   changes.
 
 **Tracking:** the actual Datasphere view-build work (Section 5, steps 3–4
 below) is logged as **ServiceDesk ticket 32035**.

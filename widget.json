@@ -49,12 +49,12 @@
             "feeds": [
                 {
                     "id": "dimensions",
-                    "description": "Date / State Tag",
+                    "description": "Date",
                     "type": "dimension"
                 },
                 {
                     "id": "measures",
-                    "description": "Member Count",
+                    "description": "Employer Count",
                     "type": "mainStructureMember"
                 }
             ]

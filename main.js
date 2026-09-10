@@ -20,10 +20,16 @@
             measures_0   = Employer Count
             measures_1   = Employee Count (optional, may be absent)
 
-      - dailyCounts     <- DS_AE_DAILY_COUNTS (wraps ZVHCM_AE_004Q)
+      - dailyCounts     <- DS_EMPLOYER_ENROLLMENT_DAILY (corrected
+                            2026-09-10 — employers go through this process
+                            too; was wrongly assumed to be the member-level
+                            DS_AE_DAILY_COUNTS/ZVHCM_AE_004Q. See
+                            BUILD_PLAN_VWEMPLOYERSAVES.md, "Timeline panel.")
             dimensions_0 = Date (YYYY-MM-DD)
-            dimensions_1 = State tag
-            measures_0   = Member Count
+            measures_0   = Employer Count
+            (only dimensions_0/measures_0 are actually read by
+            _parseDailyCounts()/_renderTimeline() — a second dimension
+            isn't required)
 
       - yoyComparison   <- DS_AE_YOY_COMPARISON (wraps ZVHCM_AE_005Q)
             dimensions_0 = Benefit Type (Health / Dental / Vision)
@@ -46,10 +52,13 @@
 (function () {
     "use strict";
 
-    // ---- Statuses, grouped per AE_Employer Election's BR-1 vocabulary ----
-    const COMPLETED_STATUSES = ["Completed EL", "Completed OTP"];
-    const DEFAULTED_STATUSES = ["Default", "Default Override"];
-    const OPEN_STATUSES = ["Open", "Undetermined"];
+    // ---- Statuses — corrected 2026-09-10 to match GLD_AE_Employer_Enrollment's
+    // real Enrollment_Status vocabulary (was still on AE_Employer Election's
+    // original BR-1 vocabulary, which never matched anything from our real
+    // source — Completed/Non-Completed silently showed 0 regardless of data) ----
+    const COMPLETED_STATUSES = ["Success"];
+    const DEFAULTED_STATUSES = []; // no real "Defaulted" status value exists yet — see BUILD_PLAN_VWEMPLOYERSAVES.md, "Not in this build"
+    const OPEN_STATUSES = ["Abandoned", "Not Started", "In Progress", "Needs Follow-up"];
 
     // ---- Mock data (mirrors the real SAC ResultSet row shape) ----
     function row(dims, measures) {
@@ -59,24 +68,31 @@
         return out;
     }
 
+    // Updated 2026-09-10 to match GLD_AE_Employer_Enrollment's real
+    // Enrollment_Status vocabulary (Success/Abandoned/Not Started/In
+    // Progress/Needs Follow-up) — was still on AE_Employer Election's
+    // original BR-1 vocabulary, which no longer matches anything real.
     const MOCK_EMPLOYER_STATUS = { data: [
-        row(["Completed EL", "Southwestern Minnesota", ""], [42, 210]),
-        row(["Completed OTP", "Southwestern Minnesota", ""], [11, 55]),
-        row(["Open", "Southwestern Minnesota", ""], [9, 40]),
-        row(["Default", "Southwestern Minnesota", ""], [3, 12]),
-        row(["Completed EL", "Metropolitan Chicago", ""], [30, 300]),
-        row(["Completed OTP", "Metropolitan Chicago", ""], [6, 61]),
-        row(["Open", "Metropolitan Chicago", ""], [14, 88]),
-        row(["Default", "Metropolitan Chicago", ""], [2, 9]),
-        row(["Completed EL", "Southeastern Synod", ""], [18, 120]),
-        row(["Open", "Southeastern Synod", ""], [7, 33]),
-        row(["Default Override", "Southeastern Synod", ""], [1, 4]),
+        row(["Success", "Southwestern Minnesota", ""], [53, 265]),
+        row(["Not Started", "Southwestern Minnesota", ""], [5, 20]),
+        row(["In Progress", "Southwestern Minnesota", ""], [2, 10]),
+        row(["Abandoned", "Southwestern Minnesota", ""], [3, 12]),
+        row(["Needs Follow-up", "Southwestern Minnesota", ""], [2, 8]),
+        row(["Success", "Metropolitan Chicago", ""], [36, 361]),
+        row(["Not Started", "Metropolitan Chicago", ""], [8, 50]),
+        row(["In Progress", "Metropolitan Chicago", ""], [4, 25]),
+        row(["Abandoned", "Metropolitan Chicago", ""], [2, 9]),
+        row(["Needs Follow-up", "Metropolitan Chicago", ""], [2, 13]),
+        row(["Success", "Southeastern Synod", ""], [18, 120]),
+        row(["Not Started", "Southeastern Synod", ""], [4, 20]),
+        row(["In Progress", "Southeastern Synod", ""], [3, 13]),
+        row(["Abandoned", "Southeastern Synod", ""], [1, 4]),
         // Of-complete election sub-type breakdown (see DATASPHERE_VIEW_SPEC.md
         // "Open design question" — employer/member join not yet resolved,
         // these mock counts stand in for it).
-        row(["Completed", "", "Health"], [88]),
-        row(["Completed", "", "HSA One Time"], [37]),
-        row(["Completed", "", "HSA Family"], [21]),
+        row(["Success", "", "Health"], [88]),
+        row(["Success", "", "HSA One Time"], [37]),
+        row(["Success", "", "HSA Family"], [21]),
     ] };
 
     const MOCK_DAILY_COUNTS = { data: [
@@ -354,6 +370,10 @@
                     <div id="electionBreakdown"></div>
                 </div>
                 <div class="panel">
+                    <div class="section-title" style="margin-top:0;">Non-Completed — By Status</div>
+                    <div id="statusBreakdown"></div>
+                </div>
+                <div class="panel">
                     <div class="section-title" style="margin-top:0;">Synod / Region</div>
                     <div id="synodBreakdown"></div>
                 </div>
@@ -432,6 +452,7 @@
             const rows = (this._employerStatus && this._employerStatus.data) || [];
             const bySynod = {};
             const byElectionType = {};
+            const byStatus = {}; // added 2026-09-10 — granular Not Started/In Progress/Abandoned/Needs Follow-up breakdown
             let totalSetUp = 0, completed = 0, defaulted = 0, open = 0;
 
             rows.forEach((r) => {
@@ -452,11 +473,12 @@
                 else if (bucket === "Defaulted") defaulted += employerCount;
                 else if (bucket === "Open") open += employerCount;
 
+                if (bucket === "Open" && status) byStatus[status] = (byStatus[status] || 0) + employerCount;
                 if (synod) bySynod[synod] = (bySynod[synod] || 0) + employerCount;
             });
 
             const pctComplete = totalSetUp ? Math.round((completed / totalSetUp) * 100) : 0;
-            return { totalSetUp, completed, defaulted, open, pctComplete, bySynod, byElectionType };
+            return { totalSetUp, completed, defaulted, open, pctComplete, bySynod, byElectionType, byStatus };
         }
 
         _parseDailyCounts() {
@@ -531,6 +553,13 @@
             // Of-complete election sub-type breakdown
             const electionEntries = Object.keys(status.byElectionType).map((t) => ({ name: t, value: status.byElectionType[t] }));
             root.getElementById("electionBreakdown").innerHTML = this._breakdownRowsHtml(electionEntries, "No election sub-type data bound yet");
+
+            // Non-Completed by status (Not Started / In Progress / Abandoned / Needs Follow-up)
+            const statusEntries = Object.keys(status.byStatus).map((s) => {
+                const pct = status.open ? Math.round((status.byStatus[s] / status.open) * 100) : 0;
+                return { name: s, value: status.byStatus[s], display: `${status.byStatus[s]} (${pct}% of non-completed)` };
+            });
+            root.getElementById("statusBreakdown").innerHTML = this._breakdownRowsHtml(statusEntries, "No status data bound yet");
 
             // Synod/Region breakdown
             const synodEntries = Object.keys(status.bySynod).map((s) => ({ name: s, value: status.bySynod[s] }));
