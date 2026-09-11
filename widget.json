@@ -35,7 +35,7 @@
             "feeds": [
                 {
                     "id": "dimensions",
-                    "description": "Status / Synod-Region / Election Sub-Type",
+                    "description": "Status / Synod-Region / Election Sub-Type / Date",
                     "type": "dimension"
                 },
                 {
@@ -49,12 +49,12 @@
             "feeds": [
                 {
                     "id": "dimensions",
-                    "description": "Date",
+                    "description": "Deprecated 2026-09-10 — no longer read by the widget. Timeline data now rides inside employerStatus's Date dimension instead (SAC's Builder UI can only bind one model per widget). Kept declared for manifest compatibility only.",
                     "type": "dimension"
                 },
                 {
                     "id": "measures",
-                    "description": "Employer Count",
+                    "description": "Deprecated 2026-09-10 — see dimensions note",
                     "type": "mainStructureMember"
                 }
             ]

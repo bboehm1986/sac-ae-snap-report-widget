@@ -28,6 +28,37 @@ Non-Completed total).
 vocabulary — it was still using the old BR-1 labels too, which is why
 this bug wasn't caught by the standalone preview until now.
 
+**Architecture change 2026-09-10 — SAC's Story Builder can only bind one
+model per custom widget.** After extensive testing (scrolling, clicking
+the widget directly, right-click, deselect/reselect, the pencil/edit
+icon, delete-and-readd, the Data panel's chevron drill-in, the far-right
+icon strip), no UI path was ever found to configure `dailyCounts` or
+`yoyComparison` as independent bindings once `employerStatus` was bound
+— consistent with SAC Community reports that the Story Builder UI only
+supports one data-binding configuration per custom widget through
+point-and-click; additional bindings need a scripting workaround.
+
+**Decided: fold Timeline into `employerStatus` instead**, same
+combined-cube pattern already used for Election Type — one row shape per
+"kind" of row (status/synod, election-type, or now date), distinguished
+by which dimension is populated, `UNION ALL`'d together in
+`DS_EMPLOYER_ENROLLMENT_SUMMARY`. `main.js` updated: `dimensions_3` =
+`Date`, `_parseEmployerStatus()` now also returns `daily`, the standalone
+`_parseDailyCounts()`/`dailyCounts` binding removed from the render path
+(still declared in `widget.json` for manifest compatibility, marked
+deprecated). Verified in the Browser pane: no console errors, all
+existing tiles/breakdowns unchanged, Timeline bars render correctly from
+the same binding.
+
+**`yoyComparison` could NOT be folded in the same way** — it's
+member-level benefit-type data with no shared grain to employer data.
+Stays genuinely deferred; would need the "hidden table + Story Script"
+workaround if pursued later, not this combined-cube pattern.
+
+**`AM_EMPLOYER_ENROLLMENT_DAILY`/`DS_EMPLOYER_ENROLLMENT_DAILY` are now
+unnecessary** — Timeline's data lives in `DS_EMPLOYER_ENROLLMENT_SUMMARY`
+instead. Fine to leave them deployed unused, or delete — your call.
+
 **Resolved 2026-09-04:** `vEmployerSaves` exists — exposed Datasphere view
 over `BRZ_vwEmployerSaves`, already filtered to `EventTypeCode =
 'EmplrElect'`. No longer blocked. Gold SQL below builds directly on it.
@@ -175,38 +206,23 @@ This is specific to *this* custom widget's own code — the native SAC
 Table widget planned for the download experience below reads columns by
 name, not position, so it won't hit the same issue.
 
-## Timeline panel — corrected 2026-09-10
+## Timeline panel — corrected 2026-09-10, then folded into employerStatus
 
 **Original assumption was wrong.** The widget's `dailyCounts` binding
 (`main.js` header comment: `DS_AE_DAILY_COUNTS`, wrapping `ZVHCM_AE_004Q`,
 `Member Count`) is member-level — but **employers go through the election
 process too**, and the Timeline panel should track *employer* activity by
-day, not members. This is a completely separate mistake from the
-election-type one above (same root cause: original spec fields getting
-assumed correct without re-checking against what's actually needed).
+day, not members.
 
-**Checked `main.js`'s actual code, not just the comment** — `dailyCounts`
-is more generic than documented: `_parseDailyCounts()`/`_renderTimeline()`
-only read `dimensions_0` (date) and `measures_0` (a plain count) and sum
-by day. The "State tag" second dimension in the header comment isn't used
-anywhere in the logic. So switching this to employer data needs **zero
-widget code changes** — just a new data source with that shape, and an
-updated header comment (`Employer Count`, not `Member Count`;
-`DS_EMPLOYER_ENROLLMENT_DAILY`, not `DS_AE_DAILY_COUNTS`).
-
-**New cube, once `Completed_Date` lands in Gold (see Gold SQL above):**
-
-```sql
-SELECT
-    "Completed_Date" AS "Date",
-    COUNT(*) AS "EmployerCount"
-FROM "GLD_AE_Employer_Enrollment"
-WHERE "Enrollment_Status" = 'Success' AND "Completed_Date" IS NOT NULL
-GROUP BY "Completed_Date"
-```
-
-Same Fact + Measure + Create Analytic Model treatment as the other cubes
-(`AM_EMPLOYER_ENROLLMENT_DAILY`).
+**Then superseded again** — a separate `DS_EMPLOYER_ENROLLMENT_DAILY`
+cube was briefly built and deployed for this, but since SAC's Story
+Builder UI can only bind one model per custom widget (see the
+architecture-change note above), `dailyCounts` as an independent binding
+turned out to be unreachable anyway. Folded into `employerStatus` instead
+— see the combined `DS_EMPLOYER_ENROLLMENT_SUMMARY` SQL below, which now
+includes a `Date`-carrying `UNION ALL` block for this. The standalone
+`DS_EMPLOYER_ENROLLMENT_DAILY`/`AM_EMPLOYER_ENROLLMENT_DAILY` objects are
+no longer needed.
 
 ## Download experience — decided 2026-09-04
 
@@ -313,16 +329,18 @@ WHERE a."rn" = 1
 built in `GLD_AE_Employer_Enrollment`; needs a full rebuild with this
 version, not an incremental edit, given how much has changed.
 
-Then the aggregate cube on top — **combined design, see "Election Type
-breakdown" section above for the reasoning** (one cube, not two; a third
-`Election_Category` column carries the new breakdown, blank for the
-original Status/Synod rows):
+Then the aggregate cube on top — **combined design, now carrying THREE
+kinds of rows** (Status/Synod, Election Type, and — added 2026-09-10 once
+the multi-binding limitation was found — Timeline). One `Election_Category`
+column and one `Date` column, each blank except on the row-kind they
+apply to:
 
 ```sql
 SELECT
     "Synod_Region",
     "Enrollment_Status",
     CAST('' AS NVARCHAR(50)) AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)  AS "Date",
     COUNT(*)                AS "EmployerCount",
     SUM("Employee_Count")   AS "EmployeeCount"
 FROM "GLD_AE_Employer_Enrollment"
@@ -330,43 +348,54 @@ GROUP BY "Synod_Region", "Enrollment_Status"
 
 UNION ALL
 
-SELECT CAST('' AS NVARCHAR(50)), CAST('' AS NVARCHAR(50)), "Health_Plan_Bundle", COUNT(*), CAST(NULL AS DECIMAL)
+SELECT CAST('' AS NVARCHAR(50)), CAST('' AS NVARCHAR(50)), "Health_Plan_Bundle", CAST(NULL AS TIMESTAMP), COUNT(*), CAST(NULL AS DECIMAL)
 FROM "GLD_AE_Employer_Enrollment"
 WHERE "Enrollment_Status" = 'Success'
 GROUP BY "Health_Plan_Bundle"
 
 UNION ALL
 
-SELECT '', '', 'HSA Single', COUNT(*), CAST(NULL AS DECIMAL)
+SELECT '', '', 'HSA Single', CAST(NULL AS TIMESTAMP), COUNT(*), CAST(NULL AS DECIMAL)
 FROM "GLD_AE_Employer_Enrollment"
 WHERE "Enrollment_Status" = 'Success' AND "HSA_Single" > 0
 
 UNION ALL
 
-SELECT '', '', 'HSA Family', COUNT(*), CAST(NULL AS DECIMAL)
+SELECT '', '', 'HSA Family', CAST(NULL AS TIMESTAMP), COUNT(*), CAST(NULL AS DECIMAL)
 FROM "GLD_AE_Employer_Enrollment"
 WHERE "Enrollment_Status" = 'Success' AND "HSA_Family" > 0
 
 UNION ALL
 
-SELECT '', '', 'HSA One Time Single', COUNT(*), CAST(NULL AS DECIMAL)
+SELECT '', '', 'HSA One Time Single', CAST(NULL AS TIMESTAMP), COUNT(*), CAST(NULL AS DECIMAL)
 FROM "GLD_AE_Employer_Enrollment"
 WHERE "Enrollment_Status" = 'Success' AND "HSA_One_Time_Single" > 0
 
 UNION ALL
 
-SELECT '', '', 'HSA One Time Family', COUNT(*), CAST(NULL AS DECIMAL)
+SELECT '', '', 'HSA One Time Family', CAST(NULL AS TIMESTAMP), COUNT(*), CAST(NULL AS DECIMAL)
 FROM "GLD_AE_Employer_Enrollment"
 WHERE "Enrollment_Status" = 'Success' AND "HSA_One_Time_Family" > 0
+
+UNION ALL
+
+SELECT CAST('' AS NVARCHAR(50)), CAST('' AS NVARCHAR(50)), CAST('' AS NVARCHAR(50)), "Completed_Date", COUNT(*), CAST(NULL AS DECIMAL)
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Enrollment_Status" = 'Success' AND "Completed_Date" IS NOT NULL
+GROUP BY "Completed_Date"
 ```
 
-**Status: drafted, not yet deployed** — pinned per Blair 2026-09-10,
-expect further rework. When resumed: redeploy this SQL into
-`DS_EMPLOYER_ENROLLMENT_SUMMARY`, then add `Election_Category` as a new
-Attribute on `AM_EMPLOYER_ENROLLMENT_SUMMARY` (only appears once the
-underlying view is actually redeployed with the new column — "Show
-Inherited Elements" alone doesn't refresh it), then add it to the SAC
-Builder panel's Dimensions list after `Enrollment_Status`/`Synod_Region`.
+**Status: the Election-Type-only version (no `Date` column) was
+deployed and confirmed working 2026-09-10** — Total Set Up/Completed/%
+Complete/Synod/Election Type breakdowns all verified live in SAC.
+**The `Date` column above is the next revision, not yet deployed** —
+adding it needs the same steps as before: redeploy this SQL into
+`DS_EMPLOYER_ENROLLMENT_SUMMARY`, then add `Date` as a new Attribute on
+`AM_EMPLOYER_ENROLLMENT_SUMMARY` ("Show Inherited Elements" alone won't
+refresh it — the underlying view has to actually redeploy first), then
+add it to the SAC Builder panel's Dimensions list, **after**
+`Election_Category` (so it lands in `dimensions_3`, matching `main.js`'s
+updated contract).
 
 **Important, confirmed 2026-09-04 via a Datasphere engineer:** SAC's
 "Model or Dataset" picker only surfaces Datasphere objects that have an
