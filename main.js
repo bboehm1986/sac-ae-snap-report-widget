@@ -11,36 +11,64 @@
     measures_0: {raw,formatted}, ... } ] }):
 
       - employerStatus  <- DS_EMPLOYER_ENROLLMENT_SUMMARY (rewritten
-                            2026-09-10 — see below, "Why one binding")
+                            2026-09-10, extended 2026-09-11 for YoY — see
+                            below, "Why one binding")
             dimensions_0 = Status (Success / Abandoned / Not Started /
                             In Progress / Needs Follow-up / "" for
-                            election-type or timeline rows)
+                            election-type, HSA, YoY, or timeline rows)
             dimensions_1 = Synod/Region ("" for non-geography rows)
-            dimensions_2 = Election Sub-Type (a Health_Plan_Bundle name,
-                            or "HSA Single"/"HSA Family"/"HSA One Time
-                            Single"/"HSA One Time Family"; "" for plain
-                            status or timeline rows)
-            dimensions_3 = Date (Completed_Date; "" for status or
-                            election-type rows) — Timeline data, added
-                            2026-09-10, see below
-            measures_0   = Employer Count
-            measures_1   = Employee Count (optional, may be absent;
-                            not populated on election-type/timeline rows)
+            dimensions_2 = Election_Category — carries several different
+                            "kinds" of value depending on row-kind (see
+                            dimensions_4 below to disambiguate):
+                              - a Health_Plan_Bundle name (e.g. "Select
+                                Copay", "Value HDHP") when dimensions_4
+                                (Year) is populated — the same 4 bucket
+                                names appear for both 2026 (from "2026
+                                Employer Annual Elections") and 2027
+                                (our own Gold) sides of the YoY comparison
+                              - "HSA Annual - Elected 0" / "HSA Annual -
+                                Elected >0" / "HSA One Time - Elected 0" /
+                                "HSA One Time - Elected >0" — collapsed
+                                2-bucket-per-type HSA scheme (replaced the
+                                old 4-independent-field count 2026-09-11,
+                                per Blair: Single+Family collapse into one
+                                Annual bucket, OneTimeSingle+OneTimeFamily
+                                into one One Time bucket)
+                              - "Eligible Count" — employer eligible-
+                                headcount YoY, from vEmployerEligibleCount
+                              - "" for plain status/synod or timeline rows
+            dimensions_3 = Date (Completed_Date; "" for all other row-
+                            kinds) — Timeline data, added 2026-09-10
+            dimensions_4 = Year — added 2026-09-11 for the YoY panel.
+                            Populated only on Health_Plan_Bundle rows
+                            (2027) / "Bucket" rows (2026, same bundle
+                            names via a 2026-side regex parse) / "Eligible
+                            Count" rows (2026 or 2027); "" on every other
+                            row-kind (Status/Synod, HSA, Timeline)
+            measures_0   = Employer Count (unused on "Eligible Count"
+                            rows — that row-kind's total rides in
+                            measures_1 instead, see below)
+            measures_1   = Employee Count on Status/Synod rows; repurposed
+                            to carry SUM(EligibleCount) on "Eligible
+                            Count" rows specifically (optional/absent on
+                            every other row-kind)
 
-      - dailyCounts, yoyComparison — still declared in widget.json but
-        no longer read by this widget's code. Why: SAC's Story Builder UI
+      - dailyCounts, yoyComparison — still declared in widget.json but no
+        longer read by this widget's code. Why: SAC's Story Builder UI
         can only bind one model per custom widget through its
         point-and-click Builder panel — no UI path to configure a second
         or third named binding was found after extensive testing (2026-
-        09-10). Timeline was folded into employerStatus above instead
-        (same combined-cube pattern already used for Election Sub-Type —
-        one row shape per "kind" of row, distinguished by which
-        dimension is populated, UNION ALL'd together in
-        DS_EMPLOYER_ENROLLMENT_SUMMARY's own SQL). yoyComparison could
-        NOT be folded in the same way — it's member-level benefit-type
-        data with no shared grain to employer data — so it stays
-        genuinely unbound/deferred; would need the "hidden table +
-        Story Script" workaround if pursued later, not this pattern.
+        09-10). Timeline, and later the full YoY panel (health-plan
+        bucket comparison, HSA collapse, eligible-count delta), were both
+        folded into employerStatus above instead (same combined-cube
+        pattern already used for Election Sub-Type — one row shape per
+        "kind" of row, distinguished by which dimensions are populated,
+        UNION ALL'd together in DS_EMPLOYER_ENROLLMENT_SUMMARY's own
+        SQL). The `yoyComparison` binding's original design (member-level
+        benefit-type/Y-N-changed shape) is now fully dead — superseded by
+        the employer-level YoY design folded into employerStatus instead;
+        kept declared in widget.json only for manifest compatibility, per
+        the same deprecation pattern already used for dailyCounts.
 
     Until these are wired to real Datasphere-backed models, the widget
     renders from the MOCK_* constants below so the layout can be built and
@@ -78,57 +106,67 @@
     // Enrollment_Status vocabulary (Success/Abandoned/Not Started/In
     // Progress/Needs Follow-up) — was still on AE_Employer Election's
     // original BR-1 vocabulary, which no longer matches anything real.
+    // Extended 2026-09-11 with a 5th dimension (Year) and the new YoY
+    // row-kinds — see header comment for the full shape.
     const MOCK_EMPLOYER_STATUS = { data: [
-        row(["Success", "Southwestern Minnesota", "", ""], [53, 265]),
-        row(["Not Started", "Southwestern Minnesota", "", ""], [5, 20]),
-        row(["In Progress", "Southwestern Minnesota", "", ""], [2, 10]),
-        row(["Abandoned", "Southwestern Minnesota", "", ""], [3, 12]),
-        row(["Needs Follow-up", "Southwestern Minnesota", "", ""], [2, 8]),
-        row(["Success", "Metropolitan Chicago", "", ""], [36, 361]),
-        row(["Not Started", "Metropolitan Chicago", "", ""], [8, 50]),
-        row(["In Progress", "Metropolitan Chicago", "", ""], [4, 25]),
-        row(["Abandoned", "Metropolitan Chicago", "", ""], [2, 9]),
-        row(["Needs Follow-up", "Metropolitan Chicago", "", ""], [2, 13]),
-        row(["Success", "Southeastern Synod", "", ""], [18, 120]),
-        row(["Not Started", "Southeastern Synod", "", ""], [4, 20]),
-        row(["In Progress", "Southeastern Synod", "", ""], [3, 13]),
-        row(["Abandoned", "Southeastern Synod", "", ""], [1, 4]),
-        // Of-complete election sub-type breakdown — combined into this same
-        // binding 2026-09-10, see header comment "Why one binding".
-        row(["", "", "Value Copay", ""], [42]),
-        row(["", "", "Select Copay", ""], [31]),
-        row(["", "", "Value HDHP", ""], [22]),
-        row(["", "", "Select HDHP", ""], [12]),
-        row(["", "", "HSA Single", ""], [37]),
-        row(["", "", "HSA Family", ""], [21]),
-        row(["", "", "HSA One Time Single", ""], [9]),
-        row(["", "", "HSA One Time Family", ""], [6]),
+        row(["Success", "Southwestern Minnesota", "", "", ""], [53, 265]),
+        row(["Not Started", "Southwestern Minnesota", "", "", ""], [5, 20]),
+        row(["In Progress", "Southwestern Minnesota", "", "", ""], [2, 10]),
+        row(["Abandoned", "Southwestern Minnesota", "", "", ""], [3, 12]),
+        row(["Needs Follow-up", "Southwestern Minnesota", "", "", ""], [2, 8]),
+        row(["Success", "Metropolitan Chicago", "", "", ""], [36, 361]),
+        row(["Not Started", "Metropolitan Chicago", "", "", ""], [8, 50]),
+        row(["In Progress", "Metropolitan Chicago", "", "", ""], [4, 25]),
+        row(["Abandoned", "Metropolitan Chicago", "", "", ""], [2, 9]),
+        row(["Needs Follow-up", "Metropolitan Chicago", "", "", ""], [2, 13]),
+        row(["Success", "Southeastern Synod", "", "", ""], [18, 120]),
+        row(["Not Started", "Southeastern Synod", "", "", ""], [4, 20]),
+        row(["In Progress", "Southeastern Synod", "", "", ""], [3, 13]),
+        row(["Abandoned", "Southeastern Synod", "", "", ""], [1, 4]),
+        // Health-plan bucket breakdown, now carrying BOTH years for YoY —
+        // combined into this same binding 2026-09-10, extended with Year
+        // 2026-09-11, see header comment "Why one binding".
+        row(["", "", "Value Copay", "", "2027"], [42]),
+        row(["", "", "Select Copay", "", "2027"], [31]),
+        row(["", "", "Value HDHP", "", "2027"], [22]),
+        row(["", "", "Select HDHP", "", "2027"], [12]),
+        row(["", "", "Value Copay", "", "2026"], [35]),
+        row(["", "", "Select Copay", "", "2026"], [29]),
+        row(["", "", "Value HDHP", "", "2026"], [28]),
+        row(["", "", "Select HDHP", "", "2026"], [9]),
+        // HSA — collapsed 2-bucket-per-type scheme, replaced the old 4
+        // independent per-field counts 2026-09-11 (Annual = Single OR
+        // Family; One Time = OneTimeSingle OR OneTimeFamily).
+        row(["", "", "HSA Annual - Elected 0", "", ""], [66]),
+        row(["", "", "HSA Annual - Elected >0", "", ""], [47]),
+        row(["", "", "HSA One Time - Elected 0", "", ""], [98]),
+        row(["", "", "HSA One Time - Elected >0", "", ""], [15]),
+        // Eligible Count YoY — added 2026-09-11, from vEmployerEligibleCount.
+        row(["", "", "Eligible Count", "", "2026"], [null, 1240]),
+        row(["", "", "Eligible Count", "", "2027"], [null, 1310]),
         // Timeline data — folded into this same binding 2026-09-10 (was
         // MOCK_DAILY_COUNTS/dailyCounts, see header comment "Why one binding").
-        row(["", "", "", "2026-10-01"], [14]),
-        row(["", "", "", "2026-10-02"], [22]),
-        row(["", "", "", "2026-10-03"], [19]),
-        row(["", "", "", "2026-10-04"], [8]),
-        row(["", "", "", "2026-10-05"], [3]),
-        row(["", "", "", "2026-10-06"], [27]),
-        row(["", "", "", "2026-10-07"], [31]),
-        row(["", "", "", "2026-10-08"], [25]),
-        row(["", "", "", "2026-10-09"], [18]),
-        row(["", "", "", "2026-10-10"], [12]),
-        row(["", "", "", "2026-10-11"], [4]),
-        row(["", "", "", "2026-10-12"], [2]),
-        row(["", "", "", "2026-10-13"], [30]),
-        row(["", "", "", "2026-10-14"], [41]),
+        row(["", "", "", "2026-10-01", ""], [14]),
+        row(["", "", "", "2026-10-02", ""], [22]),
+        row(["", "", "", "2026-10-03", ""], [19]),
+        row(["", "", "", "2026-10-04", ""], [8]),
+        row(["", "", "", "2026-10-05", ""], [3]),
+        row(["", "", "", "2026-10-06", ""], [27]),
+        row(["", "", "", "2026-10-07", ""], [31]),
+        row(["", "", "", "2026-10-08", ""], [25]),
+        row(["", "", "", "2026-10-09", ""], [18]),
+        row(["", "", "", "2026-10-10", ""], [12]),
+        row(["", "", "", "2026-10-11", ""], [4]),
+        row(["", "", "", "2026-10-12", ""], [2]),
+        row(["", "", "", "2026-10-13", ""], [30]),
+        row(["", "", "", "2026-10-14", ""], [41]),
     ] };
 
-    const MOCK_YOY = { data: [
-        row(["Health", "Y"], [64]),
-        row(["Health", "N"], [201]),
-        row(["Dental", "Y"], [22]),
-        row(["Dental", "N"], [180]),
-        row(["Vision", "Y"], [15]),
-        row(["Vision", "N"], [140]),
-    ] };
+    // MOCK_YOY / yoyComparison removed 2026-09-11 — that binding's design
+    // (member-level Benefit Type / Changed Y-N flag) is dead, superseded
+    // by the employer-level YoY rows now folded into MOCK_EMPLOYER_STATUS
+    // above (Health_Plan_Bundle rows carrying Year, plus "Eligible Count"
+    // rows). See header comment.
 
     // ---- Template ----
     const template = document.createElement("template");
@@ -387,6 +425,10 @@
                     <div id="synodBreakdown"></div>
                 </div>
                 <div class="panel">
+                    <div class="section-title" style="margin-top:0;">HSA Elections</div>
+                    <div id="hsaBreakdown"></div>
+                </div>
+                <div class="panel">
                     <div class="section-title" style="margin-top:0;">Year-over-Year Changes</div>
                     <div id="yoyBreakdown"></div>
                 </div>
@@ -408,8 +450,7 @@
             this._shadowRoot.appendChild(template.content.cloneNode(true));
 
             this._props = { width: 900, height: 600, asOfLabel: "Live" };
-            this._employerStatus = MOCK_EMPLOYER_STATUS; // now also carries Timeline + Election Type rows, see header comment
-            this._yoyComparison = MOCK_YOY;
+            this._employerStatus = MOCK_EMPLOYER_STATUS; // now also carries Timeline + Election Type + YoY rows, see header comment
             this._usingMockData = true;
         }
 
@@ -425,8 +466,8 @@
             if ("width" in changedProperties) this.style.width = changedProperties.width + "px";
             if ("height" in changedProperties) this.style.height = changedProperties.height + "px";
             if ("employerStatus" in changedProperties) { this._employerStatus = changedProperties.employerStatus; this._usingMockData = false; }
-            // "dailyCounts" no longer read — Timeline data rides inside employerStatus now, see header comment
-            if ("yoyComparison" in changedProperties) { this._yoyComparison = changedProperties.yoyComparison; this._usingMockData = false; }
+            // "dailyCounts" and "yoyComparison" no longer read — Timeline and
+            // YoY data both ride inside employerStatus now, see header comment
             this._render();
         }
 
@@ -456,29 +497,54 @@
             return null; // Cancelled / Undetermined — excluded from bucketed totals
         }
 
+        // Display-only rename, decided 2026-09-11: our own source says
+        // "Value HDHP", but the YoY requirements doc's bucket name is
+        // "Value High Deductible" — same plan, different label. Presentation
+        // layer only, not a SQL-level change (see BUILD_PLAN_VWEMPLOYERSAVES.md).
+        _displayBucketName(name) {
+            return name === "Value HDHP" ? "Value High Deductible" : name;
+        }
+
         _parseEmployerStatus() {
             const rows = (this._employerStatus && this._employerStatus.data) || [];
             const bySynod = {};
-            const byElectionType = {};
             const byStatus = {}; // added 2026-09-10 — granular Not Started/In Progress/Abandoned/Needs Follow-up breakdown
             const byDate = {}; // added 2026-09-10 — Timeline data now rides in this same binding, see note below
+            const byHealthPlan = {}; // added 2026-09-11 — keyed by Year ("2026"/"2027"), then bucket name
+            const byHsaBucket = {}; // added 2026-09-11 — "HSA Annual - Elected 0/>0" / "HSA One Time - Elected 0/>0"
+            const byEligibleCount = {}; // added 2026-09-11 — keyed by Year ("2026"/"2027")
             let totalSetUp = 0, completed = 0, defaulted = 0, open = 0;
 
             rows.forEach((r) => {
                 const status = this._dim(r, 0);
                 const synod = this._dim(r, 1);
-                const subType = this._dim(r, 2);
+                const subType = this._dim(r, 2); // dimensions_2 = Election_Category — see header comment for the several row-kinds this carries
                 const date = this._dim(r, 3); // dimensions_3 — see header comment, "employerStatus now also carries Timeline rows"
+                const year = this._dim(r, 4); // dimensions_4 = Year — added 2026-09-11, see header comment
                 const employerCount = this._measure(r, 0);
+                const employeeCount = this._measure(r, 1);
 
                 if (date) {
                     byDate[date] = (byDate[date] || 0) + employerCount;
-                    return; // timeline rows don't count toward status/election totals
+                    return; // timeline rows don't count toward status/election/YoY totals
                 }
 
-                if (subType) {
-                    byElectionType[subType] = (byElectionType[subType] || 0) + employerCount;
-                    return; // election sub-type rows don't count toward status totals
+                if (subType === "Eligible Count") {
+                    // measures_1 is repurposed to carry SUM(EligibleCount) on this row-kind, see header comment
+                    byEligibleCount[year] = (byEligibleCount[year] || 0) + employeeCount;
+                    return;
+                }
+
+                if (subType && subType.indexOf("HSA ") === 0) {
+                    byHsaBucket[subType] = (byHsaBucket[subType] || 0) + employerCount;
+                    return;
+                }
+
+                if (subType && year) {
+                    // Health-plan bucket, tagged 2026 or 2027 — see header comment
+                    if (!byHealthPlan[year]) byHealthPlan[year] = {};
+                    byHealthPlan[year][subType] = (byHealthPlan[year][subType] || 0) + employerCount;
+                    return;
                 }
 
                 const bucket = this._statusBucket(status);
@@ -494,7 +560,12 @@
 
             const pctComplete = totalSetUp ? Math.round((completed / totalSetUp) * 100) : 0;
             const daily = Object.keys(byDate).sort().map((date) => ({ date, count: byDate[date] }));
-            return { totalSetUp, completed, defaulted, open, pctComplete, bySynod, byElectionType, byStatus, daily };
+            return {
+                totalSetUp, completed, defaulted, open, pctComplete,
+                bySynod, byStatus, daily,
+                byElectionType: byHealthPlan["2027"] || {}, // current-year bucket, same data the "Of Complete" panel always showed
+                byHealthPlan, byHsaBucket, byEligibleCount,
+            };
         }
 
         // _parseDailyCounts() removed 2026-09-10 — SAC's Story Builder UI can only
@@ -508,19 +579,11 @@
         // data with no shared grain to employer data, so it can't be folded in
         // the same way; would need the scripting workaround if pursued later.
 
-        _parseYoY() {
-            const rows = (this._yoyComparison && this._yoyComparison.data) || [];
-            const byType = {};
-            rows.forEach((r) => {
-                const type = this._dim(r, 0);
-                const changed = this._dim(r, 1) === "Y";
-                const count = this._measure(r, 0);
-                if (!byType[type]) byType[type] = { changed: 0, total: 0 };
-                byType[type].total += count;
-                if (changed) byType[type].changed += count;
-            });
-            return byType;
-        }
+        // _parseYoY() removed 2026-09-11 — that binding's design (member-level
+        // Benefit Type / Changed Y-N flag) is dead. The real YoY panel (health-
+        // plan bucket comparison, HSA collapse, eligible-count delta) is built
+        // entirely from employerStatus now — see _parseEmployerStatus() above
+        // (byHealthPlan/byHsaBucket/byEligibleCount) and header comment.
 
         // ---- Small render helpers ----
         _tileHtml(label, value, sub, pctOfMax, cls) {
@@ -551,7 +614,6 @@
             const root = this._shadowRoot;
             const status = this._parseEmployerStatus();
             const daily = status.daily; // now rides inside employerStatus — see _parseEmployerStatus()
-            const yoy = this._parseYoY();
 
             root.getElementById("asof").textContent = "As of: " + (this._props.asOfLabel || "Live");
             root.getElementById("dataBadge").textContent = this._usingMockData ? "Mock Data — Preview" : "Live";
@@ -566,8 +628,8 @@
             ].join("");
             root.getElementById("employerTiles").innerHTML = tilesHtml;
 
-            // Of-complete election sub-type breakdown
-            const electionEntries = Object.keys(status.byElectionType).map((t) => ({ name: t, value: status.byElectionType[t] }));
+            // Of-complete election sub-type breakdown (current year — 2027)
+            const electionEntries = Object.keys(status.byElectionType).map((t) => ({ name: this._displayBucketName(t), value: status.byElectionType[t] }));
             root.getElementById("electionBreakdown").innerHTML = this._breakdownRowsHtml(electionEntries, "No election sub-type data bound yet");
 
             // Non-Completed by status (Not Started / In Progress / Abandoned / Needs Follow-up)
@@ -581,11 +643,48 @@
             const synodEntries = Object.keys(status.bySynod).map((s) => ({ name: s, value: status.bySynod[s] }));
             root.getElementById("synodBreakdown").innerHTML = this._breakdownRowsHtml(synodEntries, "No Synod/Region data bound yet");
 
-            // YoY breakdown
-            const yoyEntries = Object.keys(yoy).map((t) => {
-                const pct = yoy[t].total ? Math.round((yoy[t].changed / yoy[t].total) * 100) : 0;
-                return { name: t, value: yoy[t].changed, display: `${yoy[t].changed} (${pct}%)` };
+            // HSA breakdown — collapsed 2-bucket-per-type scheme, added 2026-09-11
+            // (Annual = Single OR Family; One Time = OneTimeSingle OR OneTimeFamily)
+            const HSA_LABELS = {
+                "HSA Annual - Elected 0": "Annual — None Elected",
+                "HSA Annual - Elected >0": "Annual — Elected",
+                "HSA One Time - Elected 0": "One Time — None Elected",
+                "HSA One Time - Elected >0": "One Time — Elected",
+            };
+            const hsaEntries = Object.keys(HSA_LABELS)
+                .filter((k) => status.byHsaBucket[k] !== undefined)
+                .map((k) => ({ name: HSA_LABELS[k], value: status.byHsaBucket[k] }));
+            root.getElementById("hsaBreakdown").innerHTML = this._breakdownRowsHtml(hsaEntries, "No HSA data bound yet");
+
+            // YoY breakdown — added 2026-09-11: health-plan bucket comparison
+            // (2026 "2026 Employer Annual Elections" vs. 2027 our own Gold) plus
+            // eligible-count delta, from vEmployerEligibleCount. See
+            // BUILD_PLAN_VWEMPLOYERSAVES.md, "YoY panel" for the full design.
+            const y2026 = status.byHealthPlan["2026"] || {};
+            const y2027 = status.byHealthPlan["2027"] || {};
+            const bucketNames = Array.from(new Set([...Object.keys(y2026), ...Object.keys(y2027)]));
+            const yoyEntries = bucketNames.map((b) => {
+                const before = y2026[b] || 0;
+                const after = y2027[b] || 0;
+                const delta = after - before;
+                const sign = delta > 0 ? "+" : "";
+                return {
+                    name: this._displayBucketName(b),
+                    value: after,
+                    display: `2026: ${before} → 2027: ${after} (${sign}${delta})`,
+                };
             });
+            const eligibleBefore = status.byEligibleCount["2026"] || 0;
+            const eligibleAfter = status.byEligibleCount["2027"] || 0;
+            if (eligibleBefore || eligibleAfter) {
+                const eligibleDelta = eligibleAfter - eligibleBefore;
+                const sign = eligibleDelta > 0 ? "+" : "";
+                yoyEntries.push({
+                    name: "Eligible Employees",
+                    value: eligibleAfter,
+                    display: `2026: ${eligibleBefore} → 2027: ${eligibleAfter} (${sign}${eligibleDelta})`,
+                });
+            }
             root.getElementById("yoyBreakdown").innerHTML = this._breakdownRowsHtml(yoyEntries, "No YoY data bound yet");
 
             // Timeline bar chart (hand-rolled SVG, no external chart library)

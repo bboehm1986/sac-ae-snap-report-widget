@@ -251,7 +251,73 @@ EMPRNAME` — see Gold SQL below.
 **Deferred, not blocking anything now:**
 - **Access/sensitivity conversation** — same one flagged for Member
   Enrollment's version, needed here too, since Gold carries
-  individual-employer-level data.
+  individual-employer-level data. Still not held as of 2026-09-11.
+
+### Binding the Table — findings 2026-09-11, supersedes the note below
+
+Tried "bind the Table directly to `GLD_AE_Employer_Enrollment`" first,
+since it's already an existing object with no new build needed. **Doesn't
+work**: `GLD_AE_Employer_Enrollment` never appears in the Table widget's
+"Select Dataset or Model" picker while it's a plain Relational Dataset —
+confirmed live (empty picker), matching the same "Model or Dataset" gap
+already documented below for the aggregate cube. So a **native SAC Table
+widget has the identical Analytic-Model requirement as a custom widget** —
+this isn't a custom-widget-specific rule, it's SAC's picker in general.
+
+Went looking for "Create Analytic Model" on `GLD_AE_Employer_Enrollment`
+while still Relational Dataset — not present, confirmed via scrolling,
+toggling "Run in Analytical Mode" on, and attempting Data Validation (the
+Validate control itself was disabled/unclickable). **Correction to an
+earlier claim in this doc:** I initially thought this button appears on a
+Relational Dataset view directly — wrong. Cross-checking against how
+`DS_EMPLOYER_ENROLLMENT_SUMMARY` itself was built (below), "Create
+Analytic Model" only became available there *after* Semantic Usage was
+set to Fact — not before. Gold needs the same treatment.
+
+**Decided:** set `GLD_AE_Employer_Enrollment`'s Semantic Usage to **Fact**,
+mark `HSA_Single` / `HSA_Family` / `HSA_One_Time_Single` /
+`HSA_One_Time_Family` / `Employee_Count` as Measures, then build an
+Analytic Model on top (name TBD — e.g. `AM_GLD_AE_Employer_Enrollment`)
+for the Table widget to bind to. **Confirmed no downstream SQL impact**:
+Semantic Usage is a Datasphere consumption-layer/metadata classification,
+not part of query execution — `DS_EMPLOYER_ENROLLMENT_SUMMARY`'s own
+`SELECT ... FROM "GLD_AE_Employer_Enrollment"` reads the same columns/rows
+regardless of Gold's Fact/Relational-Dataset classification, so this
+redeploys with zero changes needed to the cube SQL. Not yet confirmed
+whether this actually surfaces "Create Analytic Model" — next thing to
+test.
+
+**Governance trade-off, accepted deliberately:** once those HSA/headcount
+fields are flagged as Measures, they become available for potential
+misuse in an inappropriate aggregate visualization elsewhere in SAC
+(summing per-employer dollar amounts across employers isn't a meaningful
+metric) — the same concern that caused an earlier *accidental* Fact-typing
+of Gold to be caught and reverted. This time it's a deliberate, understood
+trade-off, made only to unlock the Table binding, not a design goal in
+itself.
+
+**Scope confirmed 2026-09-11 by Blair — narrower than "all of Gold":**
+the download only needs to show the **most recent attempt per employer**
+(already guaranteed by Gold's own `ROW_NUMBER()` dedup — no additional
+work) and **only employers with `Enrollment_Status = 'Success'`**. That
+filter will be a **fixed condition on the Table widget's own binding**,
+not exposed as a shared, user-adjustable Input Control option — leadership
+downloads completed employers only, full stop.
+
+**Input Controls still apply on top of that fixed filter**, via standard
+SAC Linked Analysis: a shared Input Control (e.g. Synod/Region) can filter
+both the dashboard's aggregate-cube widget and the Table widget at once,
+as long as both models expose a compatible dimension — this is ordinary,
+fully-supported SAC behavior across two different models on one Story
+page, **not** the same limitation as the one-model-per-*custom*-widget
+problem documented above (that one is specific to the custom-widget
+Builder panel's binding UI; native widgets like this Table don't have it).
+
+**Status as of 2026-09-11: decided, not yet executed.** Next steps once
+resumed: flip Gold's Semantic Usage to Fact, mark the five Measures,
+confirm "Create Analytic Model" appears, build the Analytic Model, bind
+the Table to it with the fixed `Enrollment_Status = 'Success'` filter,
+then wire up Linked Analysis for the shared Input Control.
 
 ## Not in this build — pending, added later
 
@@ -406,9 +472,385 @@ and an Analytic Model built on top (`AM_EMPLOYER_ENROLLMENT_SUMMARY`) —
 already done for the pre-rework version, needs re-validating once this
 SQL redeploys.
 
-**`GLD_AE_Employer_Enrollment` stays Relational Dataset, no measures** —
-it's row-level Gold, reserved for the Table+Export detail download (see
-"Download experience" above), not for direct SAC dashboard binding.
+**`GLD_AE_Employer_Enrollment` — updated 2026-09-11, supersedes the
+"stays Relational Dataset" line that used to be here.** It's still
+row-level Gold, reserved for the Table+Export detail download (see
+"Download experience" above) and never bound directly to the dashboard
+widget — that part hasn't changed. What changed: the Table widget turns
+out to need an Analytic Model too (same "Model or Dataset" picker gap as
+the aggregate cube), so Gold itself now needs Semantic Usage → Fact and
+five Measures (`HSA_Single`, `HSA_Family`, `HSA_One_Time_Single`,
+`HSA_One_Time_Family`, `Employee_Count`) — see "Binding the Table —
+findings 2026-09-11" above for the full reasoning and trade-off.
+
+## YoY panel — in progress, started 2026-09-11
+
+The widget's `yoyComparison` binding (`widget.json`: "Benefit Type / Changed
+Flag" dimensions, "Member Count" measure) predates this investigation and
+is now known to be the wrong shape — being redesigned from scratch below.
+Not yet built; captured here as it develops so nothing gets lost given how
+much has already turned up.
+
+**Confirmed source pairing:** YoY compares two separate Datasphere objects
+side by side, not one object's own before/after flag —
+**"2026 Employer Annual Elections"** (`ZVHCM_AE_1_26Q`, Matt Christensen,
+catalogued as a Near-Duplicate of AE_Employer Election — see
+`data-catalogue/products/2026-employer-annual-elections.md`) is the 2026
+half, and **our own `GLD_AE_Employer_Enrollment`** (this doc) is the 2027
+half — confirmed by Blair 2026-09-11 that "Ahmed's 2027 ProcessAttempt
+Results," named in the requirements doc below, means this Gold view
+(`AttemptedOn`/`RequestId` match the "ProcessAttempt" terminology).
+
+**Requirements doc (Blair, 2026-09-11) breaks "YoY" into five metrics,**
+not one panel:
+
+1. **Sponsored Members YoY** — delta between employee count as of
+   1/1/2026 and as of 1/1/2027.
+2. **Sponsored Members at Employer** — the 1/1/2027 count on its own.
+3. **Health Plan Method** — employer count in each of 4 buckets: Value
+   High Deductible, Select HDHP, Select Copay, Value Copay.
+4. **Health Plan YoY** — the same 4 buckets, 2026 count vs. 2027 count vs.
+   Delta, one column each.
+5. **HSA** — 2 buckets for Annual (Elected 0 / Elected >0), 2 buckets for
+   One-time (Elected 0 / Elected >0).
+
+**Metrics 1 & 2 — data source found 2026-09-11, not yet catalogued or
+built into Gold.** Blair found/wrote a Datasphere view,
+`vEmployerEligibleCount` (Quality (200) CRM space, Data Builder — see
+screenshots in chat for exact location), that computes exactly the two
+fields these metrics need without waiting on Ahmed to append them
+separately:
+
+```sql
+SELECT
+    EnrollmentYear,
+    EMPRNO,
+    count(ELIGIBLE) + 1 AS EligibleCount
+FROM (
+    SELECT DISTINCT 2026 EnrollmentYear, M."MEMBERID", M."EMPRNO",
+        D."ERBNR" AS DEPENDENT_MEMBERID, D."SUBTY" AS DEPENDENT_TYPE,
+        ...,
+        CASE WHEN MAX(DX."SMOKE") OVER (...) = 'X' THEN 0
+             WHEN D."SUBTY" = 'SPOU' THEN 1
+             WHEN MAX(DX."DISAB") OVER (...) = 'X' THEN 1
+             WHEN '20260101' <= LAST_DAY(ADD_YEARS(D."FGBDT", 26)) THEN 1
+             ELSE 0 END AS ELIGIBLE
+    FROM ZV_MEMBER_ASSOC M
+        JOIN "PA0021" D ON ... AND 20260101 BETWEEN D."BEGDA" AND D."ENDDA"
+        JOIN "PA0106" DX ON ... AND 20260101 BETWEEN DX."BEGDA" AND DX."ENDDA"
+    WHERE 20260101 BETWEEN M."BEGDA" AND M."ENDDA"
+    UNION
+    SELECT DISTINCT 2027 EnrollmentYear, ... -- identical logic, 2027-dated
+) dep_cnt
+GROUP BY EnrollmentYear, EMPRNO
+ORDER BY EnrollmentYear, EMPRNO
+```
+
+Grain: one row per (`EnrollmentYear`, `EMPRNO`), both 2026 and 2027 present
+as separate rows via the `UNION` — exactly what's needed to fold into the
+combined cube as another `UNION ALL` block carrying a `Year` dimension.
+Model Properties confirm: Semantic Usage already **Fact**, `EligibleCount`
+already a Measure (SUM), `EnrollmentYear`/`Employer Number` as Attributes
+— so the Analytic-Model gate hit twice already on this project (the Table
+download and the aggregate cube) isn't a concern for this one; it's
+already past that step. Release State: **Not Released**; Validated: **Not
+Validated** — confirm both before relying on it in production.
+
+**Added to the cataloguing to-do list (per Blair, 2026-09-11) — not done
+yet:** `vEmployerEligibleCount` needs a Notion Data Product Catalogue
+entry, same as the other new objects tracked in "Last step" below.
+
+**Metrics 3/4's health-plan bucket mapping — resolved 2026-09-11.** Blair
+confirmed the approach: map by business name between the two sources,
+collapsing to display labels. Data Preview confirmed:
+- `vEmployerSaves.CUST_BUND_NAME` (passes straight through to Gold's
+  `Health_Plan_Bundle`, no `CASE`/lookup) has all 4 buckets: `Select
+  Copay`, `Select HDHP`, `Value HDHP`, `Value Copay` — the 4th
+  (`Value Copay`) was unconfirmed as of the first preview pass, then
+  independently confirmed to exist on a second check.
+- One label mismatch, display-only, not a data issue: source says
+  `Value HDHP`, requirements doc's bucket name is `Value High
+  Deductible` — same plan, different label. **Decided:** map `Value
+  HDHP` → `Value High Deductible` as a presentation-layer rename in the
+  widget, not a SQL-level change.
+- "2026 Employer Annual Elections"'s `Comment` column holds
+  `"<Plan Name> <Amount>"` strings (`Select Copay 2000`, `Value HDHP
+  4000`, ...) — the bucket name needs the trailing number stripped:
+  ```sql
+  SUBSTR_REGEXPR('^(.+?)\s+[0-9]+$' IN "<comment_column>" GROUP 1) AS "Health_Plan_Bundle_2026"
+  ```
+  **Still needed before this can be written for real:** (1) the
+  technical column name behind the "Comment" label (its Business Name is
+  a leftover default, not descriptive — check the Columns (22) tab), and
+  (2) confirmation the object is queryable in SQL as `"ZVHCM_AE_1_26Q"`
+  (the name shown under its title) or whatever its real Datasphere
+  technical object name turns out to be.
+
+**Metric 5's HSA bucket collapsing — resolved 2026-09-11 by Blair:**
+"Annual" = `HSA_Single` OR `HSA_Family` either >0, collapsed into one
+bucket; "One-time" = `HSA_One_Time_Single` OR `HSA_One_Time_Family`
+either >0, collapsed into one bucket similarly — a real change from
+today's four independent per-field counts. Since `main.js` already keys
+row-kind off the `Election_Category` string, the "Elected 0 / Elected
+>0" split can ride inside that same string rather than needing a new
+dimension:
+```sql
+UNION ALL
+SELECT '', '', 'HSA Annual - Elected 0', CAST(NULL AS TIMESTAMP), CAST(NULL AS INT), COUNT(*), CAST(NULL AS DECIMAL)
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Enrollment_Status" = 'Success' AND "HSA_Single" <= 0 AND "HSA_Family" <= 0
+
+UNION ALL
+SELECT '', '', 'HSA Annual - Elected >0', CAST(NULL AS TIMESTAMP), CAST(NULL AS INT), COUNT(*), CAST(NULL AS DECIMAL)
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Enrollment_Status" = 'Success' AND ("HSA_Single" > 0 OR "HSA_Family" > 0)
+
+-- same two-block pattern again for "HSA One Time - Elected 0/>0" using
+-- HSA_One_Time_Single / HSA_One_Time_Family
+```
+This replaces the existing 4 independent HSA `UNION ALL` blocks in the
+cube SQL above once built — not additive to them, since they'd otherwise
+report the same underlying data two conflicting ways.
+
+**Metrics 1/2's eligible-count YoY — draft ready, needs the new `Year`
+column added to the cube schema first** (nullable, `NULL` on every
+existing row, same pattern as `Date`):
+```sql
+UNION ALL
+SELECT CAST('' AS NVARCHAR(50)), CAST('' AS NVARCHAR(50)), 'Eligible Count',
+       CAST(NULL AS TIMESTAMP), "EnrollmentYear", CAST(NULL AS BIGINT), SUM("EligibleCount")
+FROM "vEmployerEligibleCount"
+GROUP BY "EnrollmentYear"
+```
+(reuses the existing `EmployeeCount` measure slot for `SUM(EligibleCount)`,
+since that column is otherwise unused on non-Status rows)
+
+**Still open — STATUS vocabulary mismatch** between "2026 Employer
+Annual Elections" (`Undetermined`/`Completed EL`/`Completed OTP`) and our
+own `Enrollment_Status` (`Success`/`Abandoned`/etc.) — not resolved, may
+not matter if the 5 metrics above never actually need to join on status.
+
+**Technical identifiers confirmed 2026-09-11** via the Columns (22) tab
+on "2026 Employer Annual Elections": two different columns both default
+to Business Name "Comment" (a leftover UI quirk, not a conflict) —
+`CONTRIBUTIONSET` (String 50) and `GEOG` (String 50). Column order in the
+Data Preview grid ("Comment" right after "R/2 table", before
+"ContributionSet") matches the Columns tab order exactly, confirming
+**`CONTRIBUTIONSET` is the one holding `"Select Copay 2000"`-style
+values** — `GEOG`'s "Comment" default is the unrelated Synod/geography
+field; `CONTRIB_PR` (labeled "ContributionSet" in the UI, confusingly)
+holds the `CLASS-X_GOLD` tier codes, not needed here. General tab
+confirms the object's real technical name is `ZVHCM_AE_1_26Q`, Status:
+Deployed — queryable now as `FROM "ZVHCM_AE_1_26Q"`.
+
+**Full combined-cube SQL rewrite — first attempt failed to deploy
+2026-09-11**, error: `Column Year could not be resolved. Column xpr2
+could not be resolved. Column xpr1 could not be resolved.` Root cause:
+every branch after the first left the new `Year` column unaliased (bare
+`2027`, bare `2026`, bare `CAST(NULL AS INT)`, or `"EnrollmentYear"` —
+none said `AS "Year"`). Unlike raw HANA `UNION ALL` semantics (only the
+first branch's aliases matter for the real result set), Datasphere's SQL
+View validator apparently requires every branch to name every column
+explicitly. **Corrected version below aliases every column in every
+branch** — this is the one to actually deploy:
+
+```sql
+SELECT
+    "Synod_Region"            AS "Synod_Region",
+    "Enrollment_Status"       AS "Enrollment_Status",
+    CAST('' AS NVARCHAR(50))  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)   AS "Date",
+    NULL                      AS "Enrollment_Year",
+    COUNT(*)                  AS "EmployerCount",
+    SUM("Employee_Count")     AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+GROUP BY "Synod_Region", "Enrollment_Status"
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))  AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))  AS "Enrollment_Status",
+    "Health_Plan_Bundle"      AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)   AS "Date",
+    2027                      AS "Enrollment_Year",
+    COUNT(*)                  AS "EmployerCount",
+    CAST(NULL AS DECIMAL)     AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Enrollment_Status" = 'Success'
+GROUP BY "Health_Plan_Bundle"
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))  AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))  AS "Enrollment_Status",
+    "Bucket"                  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)   AS "Date",
+    2026                      AS "Enrollment_Year",
+    COUNT(*)                  AS "EmployerCount",
+    CAST(NULL AS DECIMAL)     AS "EmployeeCount"
+FROM (
+    SELECT SUBSTR_REGEXPR('^(.+?)\s+[0-9]+$' IN "CONTRIBUTIONSET" GROUP 1) AS "Bucket"
+    FROM "ZVHCM_AE_1_26Q"
+) x
+GROUP BY "Bucket"
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))                       AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))                       AS "Enrollment_Status",
+    CAST('HSA Annual - Elected 0' AS NVARCHAR(50))  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)                        AS "Date",
+    NULL                                            AS "Enrollment_Year",
+    COUNT(*)                                       AS "EmployerCount",
+    CAST(NULL AS DECIMAL)                          AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Enrollment_Status" = 'Success' AND "HSA_Single" <= 0 AND "HSA_Family" <= 0
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))                       AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))                       AS "Enrollment_Status",
+    CAST('HSA Annual - Elected >0' AS NVARCHAR(50)) AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)                        AS "Date",
+    NULL                                            AS "Enrollment_Year",
+    COUNT(*)                                       AS "EmployerCount",
+    CAST(NULL AS DECIMAL)                          AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Enrollment_Status" = 'Success' AND ("HSA_Single" > 0 OR "HSA_Family" > 0)
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))                          AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))                          AS "Enrollment_Status",
+    CAST('HSA One Time - Elected 0' AS NVARCHAR(50))   AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)                           AS "Date",
+    NULL                                               AS "Enrollment_Year",
+    COUNT(*)                                          AS "EmployerCount",
+    CAST(NULL AS DECIMAL)                             AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Enrollment_Status" = 'Success' AND "HSA_One_Time_Single" <= 0 AND "HSA_One_Time_Family" <= 0
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))                          AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))                          AS "Enrollment_Status",
+    CAST('HSA One Time - Elected >0' AS NVARCHAR(50))  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)                           AS "Date",
+    NULL                                               AS "Enrollment_Year",
+    COUNT(*)                                          AS "EmployerCount",
+    CAST(NULL AS DECIMAL)                             AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Enrollment_Status" = 'Success' AND ("HSA_One_Time_Single" > 0 OR "HSA_One_Time_Family" > 0)
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))  AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))  AS "Enrollment_Status",
+    CAST('' AS NVARCHAR(50))  AS "Election_Category",
+    "Completed_Date"          AS "Date",
+    NULL                      AS "Enrollment_Year",
+    COUNT(*)                  AS "EmployerCount",
+    CAST(NULL AS DECIMAL)     AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Enrollment_Status" = 'Success' AND "Completed_Date" IS NOT NULL
+GROUP BY "Completed_Date"
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))                AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))                AS "Enrollment_Status",
+    CAST('Eligible Count' AS NVARCHAR(50))  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)                 AS "Date",
+    "EnrollmentYear"                        AS "Enrollment_Year",
+    CAST(NULL AS BIGINT)                    AS "EmployerCount",
+    SUM("EligibleCount")                    AS "EmployeeCount"
+FROM "vEmployerEligibleCount"
+GROUP BY "EnrollmentYear"
+```
+
+**Important:** if you already have a `Year` attribute sitting in this
+view's Model Properties from the earlier failed attempts, delete it
+first (pencil/edit icon next to "Attributes" → remove `Year`) before
+pasting this SQL in — a stale attribute definition pointing at the old
+name could keep causing problems even after the SQL itself no longer
+references `Year` at all.
+
+Notes on this version:
+- Replaces the 4 independent HSA blocks with the 2-bucket collapsed
+  version — don't run both at once, they'd double-report the same data
+  two conflicting ways.
+- The `Year` column is `NULL` on every row except the two new
+  YoY-relevant row-kinds (`Health_Plan_Bundle`/`Bucket` rows get
+  2027/2026 respectively, `Eligible Count` rows get whatever
+  `vEmployerEligibleCount.EnrollmentYear` is).
+- `SUBSTR_REGEXPR` **confirmed working 2026-09-11** — tested standalone
+  in a throwaway SQL View against `"ZVHCM_AE_1_26Q"`, returned clean
+  values (`Select Copay`, `Value HDHP`, ...), no `NULL`s or malformed
+  rows. Safe to trust in the full `UNION ALL` below.
+- `Value HDHP` → `Value High Deductible` label mapping stays a
+  presentation-layer rename in `main.js`, not in this SQL.
+- **Lesson for future edits to this view:** always alias every column in
+  every `UNION ALL` branch explicitly, even when raw SQL wouldn't require
+  it — Datasphere's own SQL View validator is stricter than plain HANA
+  here.
+- **Second lesson, 2026-09-11 — reserved-name theory tested and
+  disproven.** `Year` kept failing with the identical "Column Year could
+  not be resolved" error even after (1) full aliasing fixed the earlier
+  `xpr1`/`xpr2` symptom and (2) explicitly `CAST`-ing the one remaining
+  raw passthrough to `INT`. Renamed the column to `Enrollment_Year`
+  throughout as a further test — **the error tracked the rename exactly**
+  ("Column Enrollment_Year could not be resolved"), which rules out a
+  reserved/special-cased name (`Year`/`Date`/calendar auto-detection) as
+  the cause. Three different SQL-level fixes (aliasing, casting,
+  renaming) all produced the identical *generic* failure — strong
+  evidence the problem isn't the SQL at all, it's this Fact-typed view's
+  own Attribute/Measure semantic wrapper not picking up **any** newly
+  added column from a SQL text edit, regardless of name or type.
+  **Fact-wrapper theory also tested and disproven:** switched Semantic
+  Usage to Relational Dataset (which does no Attribute/Measure validation
+  at all) and the save still failed with the identical "Column
+  Enrollment_Year could not be resolved" error.
+  **Root cause found, 2026-09-11, via bisection in a fresh throwaway
+  view:** it was never about the object, deployment state, Semantic
+  Usage, or the column's name/case — it was one specific expression:
+  `CAST("EnrollmentYear" AS INT)`. Bisection sequence: `SELECT *` →
+  worked; `SELECT "EnrollmentYear", "EligibleCount"` (no aggregation) →
+  worked; `SELECT "EnrollmentYear", SUM("EligibleCount") ... GROUP BY
+  "EnrollmentYear"` (aggregation, no `CAST`) → worked; adding the `CAST`
+  back into that same aggregation query → failed identically. Since
+  `EnrollmentYear`'s own Technical Name popup already showed **Data
+  Type: Integer**, the `CAST(... AS INT)` was always redundant.
+  **Dropping the cast from only the last branch wasn't enough** — the
+  full 8-branch query still failed identically, because that left one
+  branch supplying `Enrollment_Year` as a raw `Integer` column while
+  every other branch still supplied it via `CAST(... AS INT)`, a mix of
+  "cast expression" vs. "raw native column" across the same `UNION ALL`
+  column. **Real fix: `CAST(... AS INT)` removed from every branch**,
+  replaced with bare `NULL` / bare integer literals (`2027`, `2026`) /
+  the raw column — fully consistent representation across all 8
+  branches. See the corrected SQL below.
+
+**Remaining before this is fully live:**
+1. Deploy this SQL into `DS_EMPLOYER_ENROLLMENT_SUMMARY`, then add
+   `Year` as a new Attribute on `AM_EMPLOYER_ENROLLMENT_SUMMARY` (same
+   "redeploy the view first" caveat as `Date` above), then add it to the
+   SAC Builder panel's Dimensions list after `Date` (landing in
+   `dimensions_4`).
+2. `main.js` changes: parse `dimensions_4` (Year) alongside the existing
+   4; branch rendering for the new `Eligible Count` and
+   `HSA Annual/One Time - Elected ...` row-kinds; apply the `Value
+   HDHP` → `Value High Deductible` display rename; replace the widget's
+   dead `yoyComparison` binding (still declared in `widget.json` with the
+   old "Benefit Type / Changed Flag" shape) the same way `dailyCounts`
+   was deprecated. Not started yet.
 
 ## Last step, once everything above is built: catalogue it
 
@@ -420,7 +862,10 @@ New objects from this effort, not yet catalogued:
 - `GLD_AE_Employer_Enrollment`
 - `DS_EMPLOYER_ENROLLMENT_SUMMARY`
 - `AM_EMPLOYER_ENROLLMENT_SUMMARY`
+- The Analytic Model on `GLD_AE_Employer_Enrollment` (name TBD), once built
 - The Table+Export Table widget, once built
+- `vEmployerEligibleCount` (Quality (200) CRM space) — see "YoY panel"
+  above; found 2026-09-11, not yet catalogued
 
 **Worth checking first, not assuming:** `vEmployerSaves` (this doc) vs.
 `vwEmployerSaves` (the name already catalogued 2026-09-03 as part of the

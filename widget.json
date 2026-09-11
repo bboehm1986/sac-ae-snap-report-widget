@@ -13,7 +13,7 @@
             "kind": "main",
             "tag": "com-porticobenefits-aesnapreport",
             "url": "https://bboehm1986.github.io/sac-ae-snap-report-widget/main.js",
-            "integrity": "sha384-qqMxY5RUEcVDGHb9m0zi6zcAy2eBIZFdB2hRz3SzMViQgtfoA7ZqJvIXj8aJfr2n"
+            "integrity": "sha384-KA977IP043YCQtJFoMF1uI1bxs9EDD3ZcWcDb2YtnxZ7XJC7wgA9jkWwnFeQEGgS"
         }
     ],
     "properties": {
@@ -35,7 +35,7 @@
             "feeds": [
                 {
                     "id": "dimensions",
-                    "description": "Status / Synod-Region / Election Sub-Type / Date",
+                    "description": "Status / Synod-Region / Election Sub-Type / Date / Year",
                     "type": "dimension"
                 },
                 {
@@ -63,12 +63,12 @@
             "feeds": [
                 {
                     "id": "dimensions",
-                    "description": "Benefit Type / Changed Flag",
+                    "description": "Deprecated 2026-09-11 — no longer read by the widget. This binding's original design (Benefit Type / Changed Flag) is dead; the real YoY panel (health-plan bucket comparison, HSA collapse, eligible-count delta) now rides inside employerStatus's Election Sub-Type/Year dimensions instead (same one-model-per-widget limitation as dailyCounts). Kept declared for manifest compatibility only.",
                     "type": "dimension"
                 },
                 {
                     "id": "measures",
-                    "description": "Member Count",
+                    "description": "Deprecated 2026-09-11 — see dimensions note",
                     "type": "mainStructureMember"
                 }
             ]
