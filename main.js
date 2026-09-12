@@ -410,6 +410,21 @@
                 font-variant-numeric: tabular-nums;
             }
 
+            /* ---- Progress rows — added 2026-09-12 for Synod/Region. Same
+               stat-row shape (name + prominent value on top, muted subtext
+               below), plus a bar whose fill is an ABSOLUTE 0-100% rate for
+               that row specifically — unlike breakdown-row's bar, which is
+               sized relative to the largest value among the rows shown. */
+            .progress-track {
+                margin: 4px 0 0 15px;
+                height: 5px;
+                border-radius: 4px;
+                background: var(--surface-2);
+                box-shadow: inset 0 1px 2px rgba(23,26,35,0.10);
+                overflow: hidden;
+            }
+            .progress-fill { height: 100%; border-radius: 4px; background: var(--accent); }
+
             /* ---- Timeline chart ---- */
             .chart-grid-line { stroke: rgba(23,26,35,0.08); stroke-width: 1; }
             .chart-bar-label { font-size: 9px; fill: var(--text-soft); }
@@ -446,6 +461,7 @@
                 </div>
                 <div class="panel">
                     <div class="section-title" style="margin-top:0;">Synod / Region</div>
+                    <div class="panel-caption" style="margin-top:-4px;">% of employers completed, by synod</div>
                     <div id="synodBreakdown"></div>
                 </div>
                 <div class="panel">
@@ -647,8 +663,14 @@
                     // synod number only ("Synod 1"), summing across its
                     // lettered sub-regions ("1A"/"1B"/.../"1F") rather than
                     // breaking each one out as its own row.
+                    // Redesigned same day into a completion-progress panel —
+                    // a flat headcount-by-region wasn't actionable (didn't
+                    // say anything about which regions are behind), so this
+                    // now tracks completed vs. total per synod instead.
                     const groupKey = this._synodGroupKey(synod);
-                    bySynod[groupKey] = (bySynod[groupKey] || 0) + employerCount;
+                    if (!bySynod[groupKey]) bySynod[groupKey] = { total: 0, completed: 0 };
+                    bySynod[groupKey].total += employerCount;
+                    if (bucket === "Completed") bySynod[groupKey].completed += employerCount;
                     if (!bySynodNames[groupKey]) bySynodNames[groupKey] = new Set();
                     bySynodNames[groupKey].add(synod);
                 }
@@ -727,6 +749,25 @@
             ).join("");
         }
 
+        // Like _statRowsHtml, but with an added progress bar whose fill is
+        // an absolute 0-100% rate (e.pct) specific to that row — added
+        // 2026-09-12 for Synod/Region's completion-rate redesign. Entries:
+        // { name, title?, pct, value, sub? }.
+        _progressRowsHtml(entries, emptyMessage) {
+            if (!entries.length) return `<div class="empty-row">${emptyMessage}</div>`;
+            return entries.map((e) =>
+                `<div class="stat-row">
+                    <div class="stat-row-top">
+                        <span class="dot"></span>
+                        <span class="name"${e.title ? ` title="${e.title}"` : ""}>${e.name}</span>
+                        <span class="value">${e.value}</span>
+                    </div>
+                    <div class="progress-track"><div class="progress-fill" style="width:${Math.max(0, Math.min(100, e.pct))}%"></div></div>
+                    ${e.sub !== undefined ? `<div class="stat-row-sub">${e.sub}</div>` : ""}
+                </div>`
+            ).join("");
+        }
+
         // ---- Rendering ----
         _render() {
             const root = this._shadowRoot;
@@ -767,16 +808,26 @@
 
             // Synod/Region breakdown — collapsed to top-level synod number
             // only ("Synod 1" instead of separate "1A"/"1B"/.../"1F" rows)
-            // 2026-09-12, per Blair — the lettered sub-regions summed
-            // together were still blowing up this panel's height even after
-            // shortening each label. Sub-region names kept as a hover
-            // tooltip (comma-joined) via e.title.
-            const synodEntries = Object.keys(status.bySynod).map((s) => ({
-                name: /^\d+$/.test(s) ? `Synod ${s}` : s,
-                title: status.bySynodNames[s] ? Array.from(status.bySynodNames[s]).sort().join(", ") : undefined,
-                value: status.bySynod[s],
-            }));
-            root.getElementById("synodBreakdown").innerHTML = this._breakdownRowsHtml(synodEntries, "No Synod/Region data bound yet");
+            // 2026-09-12, per Blair. Sub-region names kept as a hover tooltip
+            // (comma-joined) via e.title.
+            // Redesigned same day into completion PROGRESS per synod, not a
+            // flat headcount — a raw count didn't say anything actionable
+            // (which regions are behind?). Now each row's bar-fill is an
+            // absolute 0-100% completion rate for that synod specifically
+            // (not sized relative to other rows, unlike every other
+            // breakdown panel) — see _progressRowsHtml().
+            const synodEntries = Object.keys(status.bySynod).map((s) => {
+                const { total, completed: synodCompleted } = status.bySynod[s];
+                const pct = total ? (synodCompleted / total) * 100 : 0;
+                return {
+                    name: /^\d+$/.test(s) ? `Synod ${s}` : s,
+                    title: status.bySynodNames[s] ? Array.from(status.bySynodNames[s]).sort().join(", ") : undefined,
+                    pct,
+                    value: this._formatPct(pct),
+                    sub: `${synodCompleted.toLocaleString()} of ${total.toLocaleString()} completed`,
+                };
+            });
+            root.getElementById("synodBreakdown").innerHTML = this._progressRowsHtml(synodEntries, "No Synod/Region data bound yet");
 
             // HSA breakdown — collapsed 2-bucket-per-type scheme, added 2026-09-11
             // (Annual = Single OR Family; One Time = OneTimeSingle OR OneTimeFamily)

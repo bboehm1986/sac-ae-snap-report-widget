@@ -514,6 +514,23 @@ five Measures (`HSA_Single`, `HSA_Family`, `HSA_One_Time_Single`,
 `HSA_One_Time_Family`, `Employee_Count`) — see "Binding the Table —
 findings 2026-09-11" above for the full reasoning and trade-off.
 
+## Synod/Region panel redesigned into completion progress — 2026-09-12
+
+Original panel just showed a flat headcount per synod (all statuses
+combined, i.e. the same population as "Total Set Up" broken out by
+region) — Blair pointed out this wasn't actionable: a raw count doesn't
+say anything about which regions are behind on completion. **Redesigned
+into a per-synod completion-progress panel**: each row now tracks
+`{ total, completed }` per synod group (not a flat count), and shows
+`% complete` prominently with `X of Y completed` as subtext, plus a
+progress bar whose fill is that **specific row's own 0-100% completion
+rate** — not sized relative to the other rows the way `_breakdownRowsHtml`
+does it. New `_progressRowsHtml()` (in `main.js`) handles this; added a
+`.panel-caption` under the section title ("% of employers completed, by
+synod") so the meaning is explicit rather than assumed. Verified against
+a simulated mixed-status dataset in the Browser pane (two sub-regions
+with different completion rates, grouped and averaged correctly).
+
 ## YoY panel row design — cleaned up 2026-09-12
 
 Original row layout crammed `"2026: 2246 → 2027: 5 (-2241)"` into the
