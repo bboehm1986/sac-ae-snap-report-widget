@@ -517,6 +517,29 @@
             return null; // Cancelled / Undetermined — excluded from bucketed totals
         }
 
+        // Bug found 2026-09-12: real SAC date labels for the Timeline's Date
+        // dimension come through as human-readable text (e.g. "Oct 5, 2026
+        // 0:00:00"), not the ISO "2026-10-05" format the mock data used —
+        // main.js's daily-bar sort (Object.keys().sort()) and label logic
+        // (date.slice(5) to get "MM-DD") both assumed ISO and broke against
+        // real data (wrong sort order, garbled labels). Deliberately NOT
+        // using `new Date(...)` here — its date-only-vs-datetime-string
+        // parsing behavior differs (UTC vs local), which can silently shift
+        // the day by one depending on the browser's timezone. Pure string
+        // matching avoids that entirely. Normalizes either format to a
+        // sortable "YYYY-MM-DD" key; anything unrecognized passes through
+        // unchanged rather than throwing.
+        _normalizeDateKey(raw) {
+            const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+            if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+            const MONTHS = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06", Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12" };
+            const human = /^([A-Za-z]{3})[A-Za-z]*\.?\s+(\d{1,2}),?\s+(\d{4})/.exec(raw);
+            if (human && MONTHS[human[1]]) {
+                return `${human[3]}-${MONTHS[human[1]]}-${human[2].padStart(2, "0")}`;
+            }
+            return raw;
+        }
+
         // Display-only rename, decided 2026-09-11: our own source says
         // "Value HDHP", but the YoY requirements doc's bucket name is
         // "Value High Deductible" — same plan, different label. Presentation
@@ -545,7 +568,8 @@
                 const employeeCount = this._measure(r, 1);
 
                 if (date) {
-                    byDate[date] = (byDate[date] || 0) + employerCount;
+                    const dateKey = this._normalizeDateKey(date);
+                    byDate[dateKey] = (byDate[dateKey] || 0) + employerCount;
                     return; // timeline rows don't count toward status/election/YoY totals
                 }
 

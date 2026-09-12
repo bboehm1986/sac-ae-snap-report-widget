@@ -224,6 +224,37 @@ includes a `Date`-carrying `UNION ALL` block for this. The standalone
 `DS_EMPLOYER_ENROLLMENT_DAILY`/`AM_EMPLOYER_ENROLLMENT_DAILY` objects are
 no longer needed.
 
+**Bug found and fixed 2026-09-12 — garbled x-axis labels once live data
+arrived.** `Completed_Date` (from `SubmittedOn`) carries a full timestamp,
+not just a date, so `GROUP BY "Completed_Date"` grouped by the exact
+second instead of by day — producing one bar per submission moment
+instead of one per day, with all their raw timestamp labels overlapping
+into unreadable text on the x-axis. **Fix:** truncate to just the date
+before grouping, while keeping the output typed as `TIMESTAMP` (not
+`DATE`) so it stays consistent with every other branch's `Date` column
+— same "every branch needs the same type" lesson learned the hard way
+during the `Enrollment_Year` debugging above:
+```sql
+CAST(CAST("Completed_Date" AS DATE) AS TIMESTAMP) AS "Date"
+...
+GROUP BY CAST("Completed_Date" AS DATE)
+```
+See the combined-cube SQL below for the full corrected block. Redeployed
+2026-09-12 — fixed the multiple-bars-per-day symptom (one clean bar per
+day now), but surfaced a **second bug**: real SAC date labels for this
+dimension come through as human-readable text (e.g. `"Oct 5, 2026
+0:00:00"`), not the ISO `"2026-10-05"` format the mock data used —
+`main.js`'s daily-bar sort (`Object.keys().sort()`) and label logic
+(`date.slice(5)` to get `"MM-DD"`) both assumed ISO and broke against
+real data (wrong sort order, garbled labels). **Fixed in `main.js`** with
+a new `_normalizeDateKey()` helper that converts either format to a
+sortable `"YYYY-MM-DD"` key via regex matching — deliberately not using
+`new Date(...)`, since its ISO-date-only-vs-datetime parsing behavior
+differs (UTC vs local) and can silently shift the day by one depending on
+the browser's timezone. Verified against both formats directly in the
+Browser pane; mock-data rendering unaffected. Pushed; not yet reverified
+against live SAC data as of this writing.
+
 ## Download experience — decided 2026-09-04
 
 Leadership needs to download the full, one-row-per-Employer Gold data —
@@ -754,13 +785,13 @@ SELECT
     CAST('' AS NVARCHAR(50))  AS "Synod_Region",
     CAST('' AS NVARCHAR(50))  AS "Enrollment_Status",
     CAST('' AS NVARCHAR(50))  AS "Election_Category",
-    "Completed_Date"          AS "Date",
+    CAST(CAST("Completed_Date" AS DATE) AS TIMESTAMP) AS "Date",
     NULL                      AS "Enrollment_Year",
     COUNT(*)                  AS "EmployerCount",
     CAST(NULL AS DECIMAL)     AS "EmployeeCount"
 FROM "GLD_AE_Employer_Enrollment"
 WHERE "Enrollment_Status" = 'Success' AND "Completed_Date" IS NOT NULL
-GROUP BY "Completed_Date"
+GROUP BY CAST("Completed_Date" AS DATE)
 
 UNION ALL
 
@@ -882,6 +913,27 @@ Confirmed as a safe no-op against mock data (which already uses genuine
 the Browser pane after the fix. Pushed to GitHub with a recomputed
 integrity hash; **not yet re-verified against live SAC data** — that's
 the next thing to confirm once the widget definition is refreshed again.
+
+## SAC Custom Widget registration — refresh doesn't work, confirmed 2026-09-12
+
+Whenever `widget.json` or `main.js` changes (new SHA-384 `integrity` hash,
+new dimensions, anything), SAC's own **Custom Widgets** registry
+(Stories → Custom Widgets tab) needs to pick up the new manifest before
+any Story using the widget will see the change. **Confirmed via a direct
+test:** checking the widget's row and clicking the circular refresh icon
+in that list's toolbar does **not** re-fetch `widget.json` from its
+hosted URL — it only reloads the list's own display from SAC's cached
+registry metadata. Proved by bumping `widget.json`'s `version` field
+(1.0.0 → 1.0.1), pushing, then clicking refresh: the Version column
+stayed at 1.0.0.
+
+**The only reliable path found so far: delete the widget entry from this
+list and re-add it (re-registering it against the same `widget.json`
+URL).** This does correctly pick up the latest manifest/hash, but loses
+the widget instance's existing Story-level bindings (Dimensions/Measures
+order in the Builder panel), which then need to be reconfigured from
+scratch — see "Combined-cube dimension/measure order" note elsewhere in
+this doc for the exact required order.
 
 ## Last step, once everything above is built: catalogue it
 
