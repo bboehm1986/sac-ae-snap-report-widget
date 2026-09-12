@@ -468,6 +468,16 @@
             if ("employerStatus" in changedProperties) { this._employerStatus = changedProperties.employerStatus; this._usingMockData = false; }
             // "dailyCounts" and "yoyComparison" no longer read — Timeline and
             // YoY data both ride inside employerStatus now, see header comment
+
+            // TEMP DEBUG 2026-09-12 — remove once the drag/drop data-revert
+            // bug is diagnosed. Logs every lifecycle call so the console
+            // history shows the full sequence of updates (and their row
+            // counts) across a drag/resize/drop, not just a single snapshot.
+            console.log("[AE Snap Report] onCustomWidgetAfterUpdate", {
+                changedKeys: Object.keys(changedProperties),
+                employerStatusRowCount: (this._employerStatus && this._employerStatus.data) ? this._employerStatus.data.length : null,
+            });
+
             this._render();
         }
 
