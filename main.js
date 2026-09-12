@@ -533,6 +533,15 @@
             return m ? Number(m.raw) : 0;
         }
 
+        // Rounds a percentage for display, but shows one decimal place
+        // (e.g. "0.3%") instead of a misleading "0%" when the real value is
+        // small but genuinely nonzero — added 2026-09-12 (17/4991 completed
+        // was rounding to "0%" via Math.round()).
+        _formatPct(pct) {
+            if (pct > 0 && pct < 1) return pct.toFixed(1) + "%";
+            return Math.round(pct) + "%";
+        }
+
         _statusBucket(status) {
             if (COMPLETED_STATUSES.includes(status)) return "Completed";
             if (DEFAULTED_STATUSES.includes(status)) return "Defaulted";
@@ -645,7 +654,10 @@
                 }
             });
 
-            const pctComplete = totalSetUp ? Math.round((completed / totalSetUp) * 100) : 0;
+            // Kept as a raw (unrounded) percentage — rounding happens only at
+            // display time via _formatPct(), so a genuinely small-but-nonzero
+            // rate doesn't get collapsed down to a misleading "0%".
+            const pctComplete = totalSetUp ? (completed / totalSetUp) * 100 : 0;
             const daily = Object.keys(byDate).sort().map((date) => ({ date, count: byDate[date] }));
             return {
                 totalSetUp, completed, defaulted, open, pctComplete,
@@ -724,13 +736,17 @@
             root.getElementById("asof").textContent = "As of: " + (this._props.asOfLabel || "Live");
             root.getElementById("dataBadge").textContent = this._usingMockData ? "Mock Data — Preview" : "Live";
 
-            // Employer Selection tiles
+            // Employer Selection tiles — percentages formatted via
+            // _formatPct() (2026-09-12) so a small-but-real rate like 17/4991
+            // shows "0.3%" instead of Math.round() collapsing it to "0%".
+            const pctOpen = status.totalSetUp ? (status.open / status.totalSetUp) * 100 : 0;
+            const pctDefaulted = status.totalSetUp ? (status.defaulted / status.totalSetUp) * 100 : 0;
             const tilesHtml = [
                 this._tileHtml("Total Set Up", status.totalSetUp, "in current filter", 100, "accent"),
-                this._tileHtml("Completed", status.completed, status.pctComplete + "% of total", status.pctComplete, "success"),
-                this._tileHtml("% Complete", status.pctComplete + "%", "of total set up", status.pctComplete, "accent"),
-                this._tileHtml("Non-Completed", status.open, (status.totalSetUp ? Math.round((status.open / status.totalSetUp) * 100) : 0) + "% of total", status.totalSetUp ? (status.open / status.totalSetUp) * 100 : 0, "warning"),
-                this._tileHtml("Defaulted (running)", status.defaulted, (status.totalSetUp ? Math.round((status.defaulted / status.totalSetUp) * 100) : 0) + "% of total", status.totalSetUp ? (status.defaulted / status.totalSetUp) * 100 : 0, "danger"),
+                this._tileHtml("Completed", status.completed, this._formatPct(status.pctComplete) + " of total", status.pctComplete, "success"),
+                this._tileHtml("% Complete", this._formatPct(status.pctComplete), "of total set up", status.pctComplete, "accent"),
+                this._tileHtml("Non-Completed", status.open, this._formatPct(pctOpen) + " of total", pctOpen, "warning"),
+                this._tileHtml("Defaulted (running)", status.defaulted, this._formatPct(pctDefaulted) + " of total", pctDefaulted, "danger"),
             ].join("");
             root.getElementById("employerTiles").innerHTML = tilesHtml;
 
@@ -744,8 +760,8 @@
             // completed)" into an unreadable multi-line mess once real data
             // arrived.
             const statusEntries = Object.keys(status.byStatus).map((s) => {
-                const pct = status.open ? Math.round((status.byStatus[s] / status.open) * 100) : 0;
-                return { name: s, value: Number(status.byStatus[s]).toLocaleString(), sub: `${pct}% of non-completed` };
+                const pct = status.open ? (status.byStatus[s] / status.open) * 100 : 0;
+                return { name: s, value: Number(status.byStatus[s]).toLocaleString(), sub: `${this._formatPct(pct)} of non-completed` };
             });
             root.getElementById("statusBreakdown").innerHTML = this._statRowsHtml(statusEntries, "No status data bound yet");
 
