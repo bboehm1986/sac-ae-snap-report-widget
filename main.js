@@ -573,18 +573,20 @@
             return name === "Value HDHP" ? "Value High Deductible" : name;
         }
 
-        // Shortens "1A - Alaska Synod" to just "1A" — added 2026-09-12, the
-        // full names wrapping to 2 lines each was blowing up this panel's
-        // height. Falls back to the full name if it doesn't match the
-        // expected "<code> - <name>" shape.
-        _synodShortLabel(name) {
-            const m = /^([0-9A-Za-z]+)\s*-\s*/.exec(name);
+        // Groups "1A - Alaska Synod"/"1B - ..."/"1F - ..." etc. under one
+        // "Synod 1" key — added 2026-09-12 (supersedes an earlier, less
+        // aggressive fix that only shortened each row's label to "1A"
+        // without collapsing the lettered sub-regions together). Falls back
+        // to the full name if it doesn't start with a digit (e.g. mock data).
+        _synodGroupKey(name) {
+            const m = /^(\d+)/.exec(name);
             return m ? m[1] : name;
         }
 
         _parseEmployerStatus() {
             const rows = (this._employerStatus && this._employerStatus.data) || [];
             const bySynod = {};
+            const bySynodNames = {}; // groupKey -> Set of raw sub-region names rolled into it, for hover tooltips
             const byStatus = {}; // added 2026-09-10 — granular Not Started/In Progress/Abandoned/Needs Follow-up breakdown
             const byDate = {}; // added 2026-09-10 — Timeline data now rides in this same binding, see note below
             const byHealthPlan = {}; // added 2026-09-11 — keyed by Year ("2026"/"2027"), then bucket name
@@ -633,14 +635,23 @@
                 else if (bucket === "Open") open += employerCount;
 
                 if (bucket === "Open" && status) byStatus[status] = (byStatus[status] || 0) + employerCount;
-                if (synod) bySynod[synod] = (bySynod[synod] || 0) + employerCount;
+                if (synod) {
+                    // Collapsed 2026-09-12, per Blair: group at the top-level
+                    // synod number only ("Synod 1"), summing across its
+                    // lettered sub-regions ("1A"/"1B"/.../"1F") rather than
+                    // breaking each one out as its own row.
+                    const groupKey = this._synodGroupKey(synod);
+                    bySynod[groupKey] = (bySynod[groupKey] || 0) + employerCount;
+                    if (!bySynodNames[groupKey]) bySynodNames[groupKey] = new Set();
+                    bySynodNames[groupKey].add(synod);
+                }
             });
 
             const pctComplete = totalSetUp ? Math.round((completed / totalSetUp) * 100) : 0;
             const daily = Object.keys(byDate).sort().map((date) => ({ date, count: byDate[date] }));
             return {
                 totalSetUp, completed, defaulted, open, pctComplete,
-                bySynod, byStatus, daily,
+                bySynod, bySynodNames, byStatus, daily,
                 byElectionType: byHealthPlan["2027"] || {}, // current-year bucket, same data the "Of Complete" panel always showed
                 byHealthPlan, byHsaBucket, byEligibleCount,
             };
@@ -741,11 +752,17 @@
             });
             root.getElementById("statusBreakdown").innerHTML = this._breakdownRowsHtml(statusEntries, "No status data bound yet");
 
-            // Synod/Region breakdown — shortened to just the leading code
-            // (e.g. "1A" instead of "1A - Alaska Synod") 2026-09-12, since
-            // the full names wrapping to 2 lines each was blowing up this
-            // panel's height. Full name kept as a hover tooltip via e.title.
-            const synodEntries = Object.keys(status.bySynod).map((s) => ({ name: this._synodShortLabel(s), title: s, value: status.bySynod[s] }));
+            // Synod/Region breakdown — collapsed to top-level synod number
+            // only ("Synod 1" instead of separate "1A"/"1B"/.../"1F" rows)
+            // 2026-09-12, per Blair — the lettered sub-regions summed
+            // together were still blowing up this panel's height even after
+            // shortening each label. Sub-region names kept as a hover
+            // tooltip (comma-joined) via e.title.
+            const synodEntries = Object.keys(status.bySynod).map((s) => ({
+                name: /^\d+$/.test(s) ? `Synod ${s}` : s,
+                title: status.bySynodNames[s] ? Array.from(status.bySynodNames[s]).sort().join(", ") : undefined,
+                value: status.bySynod[s],
+            }));
             root.getElementById("synodBreakdown").innerHTML = this._breakdownRowsHtml(synodEntries, "No Synod/Region data bound yet");
 
             // HSA breakdown — collapsed 2-bucket-per-type scheme, added 2026-09-11
