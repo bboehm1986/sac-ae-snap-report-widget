@@ -453,10 +453,12 @@
             <div class="panels">
                 <div class="panel">
                     <div class="section-title" style="margin-top:0;">Of Complete — Election Type</div>
+                    <div class="panel-caption" style="margin-top:-4px;">Completed employers' selected health plan</div>
                     <div id="electionBreakdown"></div>
                 </div>
                 <div class="panel">
                     <div class="section-title" style="margin-top:0;">Non-Completed — By Status</div>
+                    <div class="panel-caption" style="margin-top:-4px;">Employers not yet completed, by current status</div>
                     <div id="statusBreakdown"></div>
                 </div>
                 <div class="panel">
@@ -466,10 +468,12 @@
                 </div>
                 <div class="panel">
                     <div class="section-title" style="margin-top:0;">HSA Elections</div>
+                    <div class="panel-caption" style="margin-top:-4px;">Completed employers' HSA/HRA elections</div>
                     <div id="hsaBreakdown"></div>
                 </div>
                 <div class="panel">
                     <div class="section-title" style="margin-top:0;">Year-over-Year Changes</div>
+                    <div class="panel-caption" style="margin-top:-4px;">Completed health-plan elections and eligible headcount, 2026 vs. 2027</div>
                     <div id="yoyBreakdown"></div>
                 </div>
             </div>
