@@ -381,17 +381,21 @@
             }
             .empty-row { font-size: 12.5px; color: var(--text-soft); padding: 4px 0; }
 
-            /* ---- YoY rows — added 2026-09-12, replaces the generic
-               breakdown-row layout for this panel only. The generic layout's
-               narrow fixed-width .val column crammed "2026: X → 2027: Y
-               (delta)" into an unreadable line; this gives the delta its own
-               prominent line and demotes the before/after detail to muted
-               subtext instead. No bar-track here — a single bar doesn't
-               meaningfully represent a two-point before/after comparison. */
-            .yoy-row { padding: 7px 0; }
-            .yoy-row-top { display: flex; align-items: center; gap: 8px; }
-            .yoy-row-top .name { flex: 1 1 auto; font-size: 12.5px; color: var(--text); }
-            .yoy-row-top .delta {
+            /* ---- Stat rows — added 2026-09-12 (started as a YoY-only fix,
+               generalized once the same problem showed up in Non-Completed
+               — By Status). Replaces the generic breakdown-row layout
+               wherever the value doesn't fit the shared layout's narrow
+               fixed-width .val column ("2026: X → 2027: Y (delta)", "4934
+               (100% of non-completed)" both wrapped into unreadable multi-
+               line messes there). This gives the main number its own
+               prominent line and demotes any extra detail to muted subtext
+               below. No bar-track here — these values aren't meaningfully
+               comparable via a single relative bar the way a straight
+               count breakdown is. */
+            .stat-row { padding: 7px 0; }
+            .stat-row-top { display: flex; align-items: center; gap: 8px; }
+            .stat-row-top .name { flex: 1 1 auto; font-size: 12.5px; color: var(--text); }
+            .stat-row-top .value {
                 flex: none;
                 font-size: 13px;
                 font-weight: 700;
@@ -399,7 +403,7 @@
                 color: var(--text);
                 white-space: nowrap;
             }
-            .yoy-row-sub {
+            .stat-row-sub {
                 font-size: 10.5px;
                 color: var(--text-soft);
                 margin: 1px 0 0 15px;
@@ -691,28 +695,23 @@
             ).join("");
         }
 
-        // YoY-specific row layout, added 2026-09-12 — see the .yoy-row CSS
-        // comment above for why this replaces _breakdownRowsHtml here.
-        // Entries: { name, before, after }. No color-coding on the delta —
-        // 2026 is a full completed cycle being compared against a 2027
-        // cycle that's only just begun, so a "decrease" here isn't
-        // meaningfully bad news; color-coding would imply a judgment the
-        // data doesn't support yet.
-        _yoyRowsHtml(entries, emptyMessage) {
+        // Generic two-line stat row, added 2026-09-12 — see the .stat-row CSS
+        // comment above for why this replaces _breakdownRowsHtml wherever the
+        // value doesn't fit that layout's narrow .val column. Entries:
+        // { name, value, sub } — value and sub are already-formatted display
+        // strings (sub is optional).
+        _statRowsHtml(entries, emptyMessage) {
             if (!entries.length) return `<div class="empty-row">${emptyMessage}</div>`;
-            const fmt = (n) => Number(n).toLocaleString();
-            return entries.map((e) => {
-                const delta = e.after - e.before;
-                const sign = delta > 0 ? "+" : "";
-                return `<div class="yoy-row">
-                    <div class="yoy-row-top">
+            return entries.map((e) =>
+                `<div class="stat-row">
+                    <div class="stat-row-top">
                         <span class="dot"></span>
                         <span class="name">${e.name}</span>
-                        <span class="delta">${sign}${fmt(delta)}</span>
+                        <span class="value">${e.value}</span>
                     </div>
-                    <div class="yoy-row-sub">${fmt(e.before)} (2026) → ${fmt(e.after)} (2027)</div>
-                </div>`;
-            }).join("");
+                    ${e.sub !== undefined ? `<div class="stat-row-sub">${e.sub}</div>` : ""}
+                </div>`
+            ).join("");
         }
 
         // ---- Rendering ----
@@ -739,11 +738,15 @@
             root.getElementById("electionBreakdown").innerHTML = this._breakdownRowsHtml(electionEntries, "No election sub-type data bound yet");
 
             // Non-Completed by status (Not Started / In Progress / Abandoned / Needs Follow-up)
+            // Row layout switched to _statRowsHtml() 2026-09-12 — the shared
+            // breakdown-row's narrow .val column wrapped "4934 (100% of non-
+            // completed)" into an unreadable multi-line mess once real data
+            // arrived.
             const statusEntries = Object.keys(status.byStatus).map((s) => {
                 const pct = status.open ? Math.round((status.byStatus[s] / status.open) * 100) : 0;
-                return { name: s, value: status.byStatus[s], display: `${status.byStatus[s]} (${pct}% of non-completed)` };
+                return { name: s, value: Number(status.byStatus[s]).toLocaleString(), sub: `${pct}% of non-completed` };
             });
-            root.getElementById("statusBreakdown").innerHTML = this._breakdownRowsHtml(statusEntries, "No status data bound yet");
+            root.getElementById("statusBreakdown").innerHTML = this._statRowsHtml(statusEntries, "No status data bound yet");
 
             // Synod/Region breakdown — collapsed to top-level synod number
             // only ("Synod 1" instead of separate "1A"/"1B"/.../"1F" rows)
@@ -775,21 +778,34 @@
             // (2026 "2026 Employer Annual Elections" vs. 2027 our own Gold) plus
             // eligible-count delta, from vEmployerEligibleCount. See
             // BUILD_PLAN_VWEMPLOYERSAVES.md, "YoY panel" for the full design.
-            // Row layout redesigned 2026-09-12 — see _yoyRowsHtml().
+            // Row layout switched to the generic _statRowsHtml() 2026-09-12.
+            // No color-coding on the delta — 2026 is a full completed cycle
+            // being compared against a 2027 cycle that's only just begun, so
+            // a "decrease" here isn't meaningfully bad news; color-coding
+            // would imply a judgment the data doesn't support yet.
+            const fmt = (n) => Number(n).toLocaleString();
             const y2026 = status.byHealthPlan["2026"] || {};
             const y2027 = status.byHealthPlan["2027"] || {};
             const bucketNames = Array.from(new Set([...Object.keys(y2026), ...Object.keys(y2027)]));
-            const yoyEntries = bucketNames.map((b) => ({
-                name: this._displayBucketName(b),
-                before: y2026[b] || 0,
-                after: y2027[b] || 0,
-            }));
+            const yoyEntries = bucketNames.map((b) => {
+                const before = y2026[b] || 0;
+                const after = y2027[b] || 0;
+                const delta = after - before;
+                const sign = delta > 0 ? "+" : "";
+                return { name: this._displayBucketName(b), value: `${sign}${fmt(delta)}`, sub: `${fmt(before)} (2026) → ${fmt(after)} (2027)` };
+            });
             const eligibleBefore = status.byEligibleCount["2026"] || 0;
             const eligibleAfter = status.byEligibleCount["2027"] || 0;
             if (eligibleBefore || eligibleAfter) {
-                yoyEntries.push({ name: "Eligible Employees", before: eligibleBefore, after: eligibleAfter });
+                const eligibleDelta = eligibleAfter - eligibleBefore;
+                const sign = eligibleDelta > 0 ? "+" : "";
+                yoyEntries.push({
+                    name: "Eligible Employees",
+                    value: `${sign}${fmt(eligibleDelta)}`,
+                    sub: `${fmt(eligibleBefore)} (2026) → ${fmt(eligibleAfter)} (2027)`,
+                });
             }
-            root.getElementById("yoyBreakdown").innerHTML = this._yoyRowsHtml(yoyEntries, "No YoY data bound yet");
+            root.getElementById("yoyBreakdown").innerHTML = this._statRowsHtml(yoyEntries, "No YoY data bound yet");
 
             // Timeline bar chart (hand-rolled SVG, no external chart library)
             this._renderTimeline(root.getElementById("timelineChart"), daily);

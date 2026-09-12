@@ -530,6 +530,13 @@ cycle being compared against a 2027 cycle that's only just begun, so a
 "decrease" isn't meaningfully bad news yet; color would imply a judgment
 the data doesn't support until both cycles are more comparable.
 
+**Generalized 2026-09-12** once "Non-Completed — By Status" hit the exact
+same problem (`"4934 (100% of non-completed)"` wrapping into an
+unreadable 3-line mess in the same narrow `.val` column). `_yoyRowsHtml()`
+became the generic `_statRowsHtml()` (entries: `{ name, value, sub }`,
+both `value`/`sub` pre-formatted strings), `.yoy-row`/`.delta` CSS classes
+renamed to `.stat-row`/`.value`. Both panels now use it.
+
 ## YoY panel — in progress, started 2026-09-11
 
 The widget's `yoyComparison` binding (`widget.json`: "Benefit Type / Changed
