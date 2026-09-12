@@ -349,6 +349,19 @@ confirm "Create Analytic Model" appears, build the Analytic Model, bind
 the Table to it with the fixed `Enrollment_Status = 'Success'` filter,
 then wire up Linked Analysis for the shared Input Control.
 
+**Resumed 2026-09-12. Bug found marking Measures:** `HSA_HRA_SINGLE`/
+`HSA_HRA_FAMILY` converted to Measures fine, but `HSA_One_Time_Single`/
+`HSA_One_Time_Family` threw "The selection contains either a column which
+does not have a numeric data type or a key. It cannot be converted into a
+measure." Root cause: `HSAONETIMESINGLE`/`HSAONETIMEFAMILY` aren't
+actually numeric in `vEmployerSaves` (likely string/varchar holding
+numeric-looking text) — HANA SQL comparisons like `> 0` in the combined-
+cube SQL still worked at the engine level via implicit conversion, but
+Datasphere's stricter Measure-conversion check correctly rejects the
+column's declared type. **Fix: explicit `CAST(... AS DECIMAL(18,2))` on
+both fields in Gold's own SQL** — see the updated SQL above. Needs
+redeploying before retrying the Measure conversion.
+
 ## Not in this build — pending, added later
 
 - **"Defaulted"** status — definition not yet confirmed. Not part of Gold
@@ -403,8 +416,8 @@ SELECT
     a."CUST_BUND_NAME"     AS "Health_Plan_Bundle",
     a."HSA_HRA_SINGLE"     AS "HSA_Single",
     a."HSA_HRA_FAMILY"     AS "HSA_Family",
-    a."HSAONETIMESINGLE"   AS "HSA_One_Time_Single",
-    a."HSAONETIMEFAMILY"   AS "HSA_One_Time_Family",
+    CAST(a."HSAONETIMESINGLE" AS DECIMAL(18,2)) AS "HSA_One_Time_Single",
+    CAST(a."HSAONETIMEFAMILY" AS DECIMAL(18,2)) AS "HSA_One_Time_Family",
     a."numberOfEmployees"  AS "Employee_Count",
     CASE WHEN a."ResultCode" = 'S' THEN a."SubmittedOn" END AS "Completed_Date",
     CASE WHEN a."ResultCode" = 'A' THEN a."SubmittedOn" END AS "Abandoned_Date"
