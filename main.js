@@ -483,7 +483,17 @@
         // ---- Parsing helpers ----
         _dim(r, i) {
             const d = r["dimensions_" + i];
-            return d ? d.label : "";
+            if (!d) return "";
+            // Bug found 2026-09-12 via live data: SAC represents a blank/
+            // unassigned dimension member with placeholder text like
+            // "(Null)" or "(No Value)" (id "@NullMember") instead of an
+            // empty string. Every row-kind branch below relies on a genuine
+            // blank coming through as "" (if (date) {...}, if (subType)
+            // {...}) — without this normalization, EVERY plain Status/Synod
+            // row's Election_Category/Date came through as truthy literal
+            // text, misrouting the entire dataset into the wrong branches.
+            if (d.id === "@NullMember" || d.label === "(Null)" || d.label === "(No Value)") return "";
+            return d.label;
         }
         _measure(r, i) {
             const m = r["measures_" + i];

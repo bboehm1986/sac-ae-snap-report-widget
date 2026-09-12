@@ -838,19 +838,50 @@ Notes on this version:
   the raw column — fully consistent representation across all 8
   branches. See the corrected SQL below.
 
-**Remaining before this is fully live:**
-1. Deploy this SQL into `DS_EMPLOYER_ENROLLMENT_SUMMARY`, then add
-   `Year` as a new Attribute on `AM_EMPLOYER_ENROLLMENT_SUMMARY` (same
-   "redeploy the view first" caveat as `Date` above), then add it to the
-   SAC Builder panel's Dimensions list after `Date` (landing in
-   `dimensions_4`).
-2. `main.js` changes: parse `dimensions_4` (Year) alongside the existing
-   4; branch rendering for the new `Eligible Count` and
-   `HSA Annual/One Time - Elected ...` row-kinds; apply the `Value
-   HDHP` → `Value High Deductible` display rename; replace the widget's
-   dead `yoyComparison` binding (still declared in `widget.json` with the
-   old "Benefit Type / Changed Flag" shape) the same way `dailyCounts`
-   was deprecated. Not started yet.
+**Status: fully deployed, 2026-09-11/12.**
+1. SQL deployed into `DS_EMPLOYER_ENROLLMENT_SUMMARY`. `Enrollment_Year`
+   auto-detected as a new Attribute on `AM_EMPLOYER_ENROLLMENT_SUMMARY`
+   (no manual step needed there, unlike `Date` earlier). Bound in the SAC
+   Builder panel's Dimensions list, in the required order (`Enrollment_
+   Status`, `Synod_Region`, `Election_Category`, `Completed_Date`,
+   `Enrollment_Year`) and Measures order (`EmployerCount`,
+   `EmployeeCount`) — both confirmed correct via screenshot.
+2. `main.js` changes done: parses `dimensions_4` (Year); routes rows into
+   `byHealthPlan[year]`/`byHsaBucket`/`byEligibleCount[year]`; new "HSA
+   Elections" panel; "Year-over-Year Changes" panel repurposed for the
+   real health-plan-bucket comparison + eligible-count delta; `Value
+   HDHP` → `Value High Deductible` display rename applied; dead
+   `_parseYoY()`/`MOCK_YOY`/`yoyComparison` property read all removed,
+   `widget.json`'s `yoyComparison` binding formally deprecated (same
+   pattern as `dailyCounts`). Verified against mock data in the Browser
+   pane — all panels render correctly, no console errors.
+
+**Bug found and fixed 2026-09-12 — live data initially showed zero on
+every panel except a garbled Timeline.** Diagnosed via direct comparison:
+a native SAC Table bound to the same `AM_EMPLOYER_ENROLLMENT_SUMMARY`
+model, same dimensions, showed plenty of real data (`Select Copay`:
+2,251; HSA buckets with real counts; `Eligible Count` present; a
+`(No Value)` row at 4,968 — almost certainly the plain Status/Synod
+rows) — ruling out the query, model, and Builder-panel bindings (both
+Dimensions and Measures order were independently re-confirmed correct
+too). Root cause found via the browser DevTools console, inspecting the
+widget's actual received data directly
+(`document.querySelector('com-porticobenefits-aesnapreport')._employer
+Status.data`): **SAC represents a blank/unassigned dimension member with
+placeholder text — `"(Null)"` or `"(No Value)"`, `id: "@NullMember"` —
+not an empty string.** `main.js`'s `_dim()` helper returned that literal
+placeholder text as-is, and since it's truthy in JavaScript, every
+row-kind branch in `_parseEmployerStatus()` that checks `if (date) {...}`
+/ `if (subType) {...}` to distinguish row-kinds misfired — the 4,968
+plain Status/Synod rows (whose `Election_Category` is genuinely blank)
+were being read as if `Election_Category` held real text, misrouting the
+entire dataset. **Fix:** `_dim()` now normalizes `id === "@NullMember"`
+or `label === "(Null)"`/`"(No Value)"` back to `""` before returning.
+Confirmed as a safe no-op against mock data (which already uses genuine
+`""` strings) — re-verified all panels render identically to before in
+the Browser pane after the fix. Pushed to GitHub with a recomputed
+integrity hash; **not yet re-verified against live SAC data** — that's
+the next thing to confirm once the widget definition is refreshed again.
 
 ## Last step, once everything above is built: catalogue it
 
