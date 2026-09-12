@@ -229,12 +229,12 @@
             /* Glass surface, shared by every card-like element. Fallback for
                browsers without backdrop-filter support raises the opacity
                to near-solid so it still reads correctly, just without blur. */
-            .tile, .panel, .wave-card, .notice, .badge {
+            .tile, .panel, .wave-card, .badge {
                 backdrop-filter: var(--glass-blur);
                 -webkit-backdrop-filter: var(--glass-blur);
             }
             @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-                .tile, .panel, .wave-card, .notice { background: rgba(255,255,255,0.94) !important; }
+                .tile, .panel, .wave-card { background: rgba(255,255,255,0.94) !important; }
             }
 
             /* ---- Header ---- */
@@ -281,6 +281,11 @@
                 text-transform: uppercase;
                 letter-spacing: 0.05em;
                 margin: 22px 0 8px;
+            }
+            .panel-caption {
+                font-size: 12px;
+                color: var(--text-soft);
+                margin: -6px 0 8px;
             }
 
             /* ---- KPI tiles ---- */
@@ -407,17 +412,6 @@
             .chart-bar { fill: var(--accent); }
             .chart-bar.peak { fill: var(--success); }
 
-            /* ---- Notice ---- */
-            .notice {
-                margin-top: 18px;
-                background: var(--warning-bg);
-                border: 1px solid rgba(165,112,12,0.3);
-                border-radius: 14px;
-                padding: 10px 14px;
-                font-size: 11.5px;
-                color: var(--text);
-                box-shadow: var(--shadow-card);
-            }
         </style>
         <div class="dashboard">
             <div class="topbar">
@@ -459,12 +453,11 @@
                 </div>
             </div>
 
-            <div class="section-title">Timeline (10/1 – 10/14)</div>
+            <div class="section-title" id="timelineTitle">Timeline</div>
+            <div class="panel-caption" id="timelineCaption">Employers completing Annual Enrollment, by day</div>
             <div class="panel">
                 <svg id="timelineChart" width="100%" height="140" viewBox="0 0 700 140" preserveAspectRatio="none"></svg>
             </div>
-
-            <div class="notice" id="notice"></div>
         </div>
     `;
 
@@ -801,10 +794,17 @@
             // Timeline bar chart (hand-rolled SVG, no external chart library)
             this._renderTimeline(root.getElementById("timelineChart"), daily);
 
-            root.getElementById("notice").textContent =
-                "⚠ Open items pending confirmation: church membership YoY count source " +
-                "(Venkata's Datasphere view vs. Matt Christensen's CDS-view catalogue), and " +
-                "Synod/Region data access — see DATASPHERE_VIEW_SPEC.md.";
+            // Title's date range is now computed from the actual data instead
+            // of a hardcoded "(10/1 – 10/14)" — added 2026-09-12, once real
+            // Completed_Date values (which don't follow that mock window at
+            // all) started arriving.
+            const titleEl = root.getElementById("timelineTitle");
+            if (daily.length) {
+                const fmt = (iso) => { const [, m, d] = iso.split("-"); return `${Number(m)}/${Number(d)}`; };
+                titleEl.textContent = `Timeline (${fmt(daily[0].date)} – ${fmt(daily[daily.length - 1].date)})`;
+            } else {
+                titleEl.textContent = "Timeline";
+            }
         }
 
         _renderTimeline(svg, daily) {

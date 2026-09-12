@@ -1,7 +1,7 @@
 {
     "id": "com.porticobenefits.aesnapreport",
     "name": "AE Snap Report",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "vendor": "Portico Benefits",
     "license": "",
     "eula": "",
@@ -13,7 +13,7 @@
             "kind": "main",
             "tag": "com-porticobenefits-aesnapreport",
             "url": "https://bboehm1986.github.io/sac-ae-snap-report-widget/main.js",
-            "integrity": "sha384-EQAtEn+yph4a2G7Q4h2GxsRlXMaDQ2DB/LPnW7p+7eRaEEZYfw9MN21tjJ58en58"
+            "integrity": "sha384-Ri6neO7IAkk5H1KhLaYiSmiFNLYGGTqP9YPN+2WuUEU/0H6ZEZo0GBz/9RLgZ8jw"
         }
     ],
     "properties": {
