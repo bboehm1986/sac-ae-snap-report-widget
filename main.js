@@ -573,6 +573,15 @@
             return name === "Value HDHP" ? "Value High Deductible" : name;
         }
 
+        // Shortens "1A - Alaska Synod" to just "1A" — added 2026-09-12, the
+        // full names wrapping to 2 lines each was blowing up this panel's
+        // height. Falls back to the full name if it doesn't match the
+        // expected "<code> - <name>" shape.
+        _synodShortLabel(name) {
+            const m = /^([0-9A-Za-z]+)\s*-\s*/.exec(name);
+            return m ? m[1] : name;
+        }
+
         _parseEmployerStatus() {
             const rows = (this._employerStatus && this._employerStatus.data) || [];
             const bySynod = {};
@@ -671,7 +680,7 @@
             return entries.map((e) =>
                 `<div class="breakdown-row">
                     <span class="dot"></span>
-                    <span class="name">${e.name}</span>
+                    <span class="name"${e.title ? ` title="${e.title}"` : ""}>${e.name}</span>
                     <span class="track"><span class="fill" style="width:${Math.round((e.value / max) * 100)}%"></span></span>
                     <span class="val">${e.display !== undefined ? e.display : e.value}</span>
                 </div>`
@@ -732,8 +741,11 @@
             });
             root.getElementById("statusBreakdown").innerHTML = this._breakdownRowsHtml(statusEntries, "No status data bound yet");
 
-            // Synod/Region breakdown
-            const synodEntries = Object.keys(status.bySynod).map((s) => ({ name: s, value: status.bySynod[s] }));
+            // Synod/Region breakdown — shortened to just the leading code
+            // (e.g. "1A" instead of "1A - Alaska Synod") 2026-09-12, since
+            // the full names wrapping to 2 lines each was blowing up this
+            // panel's height. Full name kept as a hover tooltip via e.title.
+            const synodEntries = Object.keys(status.bySynod).map((s) => ({ name: this._synodShortLabel(s), title: s, value: status.bySynod[s] }));
             root.getElementById("synodBreakdown").innerHTML = this._breakdownRowsHtml(synodEntries, "No Synod/Region data bound yet");
 
             // HSA breakdown — collapsed 2-bucket-per-type scheme, added 2026-09-11
