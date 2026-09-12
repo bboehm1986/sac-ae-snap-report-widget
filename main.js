@@ -413,6 +413,7 @@
             /* ---- Timeline chart ---- */
             .chart-grid-line { stroke: rgba(23,26,35,0.08); stroke-width: 1; }
             .chart-bar-label { font-size: 9px; fill: var(--text-soft); }
+            .chart-bar-value { font-size: 10px; font-weight: 700; fill: var(--text); }
             .chart-bar { fill: var(--accent); }
             .chart-bar.peak { fill: var(--success); }
 
@@ -824,7 +825,9 @@
         }
 
         _renderTimeline(svg, daily) {
-            const W = 700, H = 140, padBottom = 20, padTop = 8;
+            // padTop raised 8 -> 22 2026-09-12 to make room for the new
+            // per-bar count label sitting just above each bar.
+            const W = 700, H = 140, padBottom = 20, padTop = 22;
             const max = Math.max(1, ...daily.map((d) => d.count));
             const barW = daily.length ? (W / daily.length) * 0.7 : 0;
             const gap = daily.length ? (W / daily.length) * 0.3 : 0;
@@ -845,6 +848,7 @@
                 const dayLabel = d.date.slice(5); // MM-DD
                 const isPeak = d.count === peakCount;
                 bars += `<rect class="chart-bar${isPeak ? " peak" : ""}" x="${x}" y="${y}" width="${barW}" height="${barH}" rx="2"></rect>`;
+                bars += `<text class="chart-bar-value" x="${x + barW / 2}" y="${y - 6}" text-anchor="middle">${d.count}</text>`;
                 bars += `<text class="chart-bar-label" x="${x + barW / 2}" y="${H - 6}" text-anchor="middle">${dayLabel}</text>`;
             });
 
