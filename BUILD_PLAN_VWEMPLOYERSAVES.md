@@ -279,10 +279,9 @@ someone deliberately downloads it.
 **Resolved 2026-09-10:** `Employer_Name` now in Gold, via `vDimEmployer.
 EMPRNAME` — see Gold SQL below.
 
-**Deferred, not blocking anything now:**
-- **Access/sensitivity conversation** — same one flagged for Member
-  Enrollment's version, needed here too, since Gold carries
-  individual-employer-level data. Still not held as of 2026-09-11.
+**Access/sensitivity conversation — resolved 2026-09-12 by Blair: not a
+concern for this data.** No access restriction needed on the download
+beyond what's already in place for the Story itself.
 
 ### Binding the Table — findings 2026-09-11, supersedes the note below
 
@@ -974,6 +973,13 @@ the widget instance's existing Story-level bindings (Dimensions/Measures
 order in the Builder panel), which then need to be reconfigured from
 scratch — see "Combined-cube dimension/measure order" note elsewhere in
 this doc for the exact required order.
+
+## Queued next — after the download experience is finished
+
+**Blair, 2026-09-12:** once the Table+Export download is working, explore
+splitting this single dashboard into two: one **strategic/executive**
+version and one **operational** version. Not scoped yet — no decisions
+made on what moves where, just flagging it now so it isn't lost.
 
 ## Last step, once everything above is built: catalogue it
 
