@@ -376,6 +376,31 @@
             }
             .empty-row { font-size: 12.5px; color: var(--text-soft); padding: 4px 0; }
 
+            /* ---- YoY rows — added 2026-09-12, replaces the generic
+               breakdown-row layout for this panel only. The generic layout's
+               narrow fixed-width .val column crammed "2026: X → 2027: Y
+               (delta)" into an unreadable line; this gives the delta its own
+               prominent line and demotes the before/after detail to muted
+               subtext instead. No bar-track here — a single bar doesn't
+               meaningfully represent a two-point before/after comparison. */
+            .yoy-row { padding: 7px 0; }
+            .yoy-row-top { display: flex; align-items: center; gap: 8px; }
+            .yoy-row-top .name { flex: 1 1 auto; font-size: 12.5px; color: var(--text); }
+            .yoy-row-top .delta {
+                flex: none;
+                font-size: 13px;
+                font-weight: 700;
+                font-variant-numeric: tabular-nums;
+                color: var(--text);
+                white-space: nowrap;
+            }
+            .yoy-row-sub {
+                font-size: 10.5px;
+                color: var(--text-soft);
+                margin: 1px 0 0 15px;
+                font-variant-numeric: tabular-nums;
+            }
+
             /* ---- Timeline chart ---- */
             .chart-grid-line { stroke: rgba(23,26,35,0.08); stroke-width: 1; }
             .chart-bar-label { font-size: 9px; fill: var(--text-soft); }
@@ -653,6 +678,30 @@
             ).join("");
         }
 
+        // YoY-specific row layout, added 2026-09-12 — see the .yoy-row CSS
+        // comment above for why this replaces _breakdownRowsHtml here.
+        // Entries: { name, before, after }. No color-coding on the delta —
+        // 2026 is a full completed cycle being compared against a 2027
+        // cycle that's only just begun, so a "decrease" here isn't
+        // meaningfully bad news; color-coding would imply a judgment the
+        // data doesn't support yet.
+        _yoyRowsHtml(entries, emptyMessage) {
+            if (!entries.length) return `<div class="empty-row">${emptyMessage}</div>`;
+            const fmt = (n) => Number(n).toLocaleString();
+            return entries.map((e) => {
+                const delta = e.after - e.before;
+                const sign = delta > 0 ? "+" : "";
+                return `<div class="yoy-row">
+                    <div class="yoy-row-top">
+                        <span class="dot"></span>
+                        <span class="name">${e.name}</span>
+                        <span class="delta">${sign}${fmt(delta)}</span>
+                    </div>
+                    <div class="yoy-row-sub">${fmt(e.before)} (2026) → ${fmt(e.after)} (2027)</div>
+                </div>`;
+            }).join("");
+        }
+
         // ---- Rendering ----
         _render() {
             const root = this._shadowRoot;
@@ -704,32 +753,21 @@
             // (2026 "2026 Employer Annual Elections" vs. 2027 our own Gold) plus
             // eligible-count delta, from vEmployerEligibleCount. See
             // BUILD_PLAN_VWEMPLOYERSAVES.md, "YoY panel" for the full design.
+            // Row layout redesigned 2026-09-12 — see _yoyRowsHtml().
             const y2026 = status.byHealthPlan["2026"] || {};
             const y2027 = status.byHealthPlan["2027"] || {};
             const bucketNames = Array.from(new Set([...Object.keys(y2026), ...Object.keys(y2027)]));
-            const yoyEntries = bucketNames.map((b) => {
-                const before = y2026[b] || 0;
-                const after = y2027[b] || 0;
-                const delta = after - before;
-                const sign = delta > 0 ? "+" : "";
-                return {
-                    name: this._displayBucketName(b),
-                    value: after,
-                    display: `2026: ${before} → 2027: ${after} (${sign}${delta})`,
-                };
-            });
+            const yoyEntries = bucketNames.map((b) => ({
+                name: this._displayBucketName(b),
+                before: y2026[b] || 0,
+                after: y2027[b] || 0,
+            }));
             const eligibleBefore = status.byEligibleCount["2026"] || 0;
             const eligibleAfter = status.byEligibleCount["2027"] || 0;
             if (eligibleBefore || eligibleAfter) {
-                const eligibleDelta = eligibleAfter - eligibleBefore;
-                const sign = eligibleDelta > 0 ? "+" : "";
-                yoyEntries.push({
-                    name: "Eligible Employees",
-                    value: eligibleAfter,
-                    display: `2026: ${eligibleBefore} → 2027: ${eligibleAfter} (${sign}${eligibleDelta})`,
-                });
+                yoyEntries.push({ name: "Eligible Employees", before: eligibleBefore, after: eligibleAfter });
             }
-            root.getElementById("yoyBreakdown").innerHTML = this._breakdownRowsHtml(yoyEntries, "No YoY data bound yet");
+            root.getElementById("yoyBreakdown").innerHTML = this._yoyRowsHtml(yoyEntries, "No YoY data bound yet");
 
             // Timeline bar chart (hand-rolled SVG, no external chart library)
             this._renderTimeline(root.getElementById("timelineChart"), daily);

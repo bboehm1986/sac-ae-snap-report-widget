@@ -514,6 +514,22 @@ five Measures (`HSA_Single`, `HSA_Family`, `HSA_One_Time_Single`,
 `HSA_One_Time_Family`, `Employee_Count`) — see "Binding the Table —
 findings 2026-09-11" above for the full reasoning and trade-off.
 
+## YoY panel row design — cleaned up 2026-09-12
+
+Original row layout crammed `"2026: 2246 → 2027: 5 (-2241)"` into the
+shared `.breakdown-row`'s narrow fixed-width `.val` column (designed for
+a single short number) — unreadably dense once real data arrived.
+**Redesigned this panel's rows specifically** (new `_yoyRowsHtml()`, not
+the shared `_breakdownRowsHtml()` every other panel still uses): name +
+a prominent delta on the top line (`+7`, `−1,073`), with the before/after
+detail demoted to small muted subtext below (`35 (2026) → 42 (2027)`),
+proper thousands-separator formatting, and no bar-track (a single bar
+doesn't meaningfully represent a two-point before/after comparison).
+**Deliberately no color-coding on the delta** — 2026 is a full completed
+cycle being compared against a 2027 cycle that's only just begun, so a
+"decrease" isn't meaningfully bad news yet; color would imply a judgment
+the data doesn't support until both cycles are more comparable.
+
 ## YoY panel — in progress, started 2026-09-11
 
 The widget's `yoyComparison` binding (`widget.json`: "Benefit Type / Changed
