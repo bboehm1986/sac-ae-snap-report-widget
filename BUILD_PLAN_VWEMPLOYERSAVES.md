@@ -307,8 +307,10 @@ set to Fact — not before. Gold needs the same treatment.
 **Decided:** set `GLD_AE_Employer_Enrollment`'s Semantic Usage to **Fact**,
 mark `HSA_Single` / `HSA_Family` / `HSA_One_Time_Single` /
 `HSA_One_Time_Family` / `Employee_Count` as Measures, then build an
-Analytic Model on top (name TBD — e.g. `AM_GLD_AE_Employer_Enrollment`)
-for the Table widget to bind to. **Confirmed no downstream SQL impact**:
+Analytic Model on top — named `AM_EMPLOYER_ENROLLMENT_DETAIL` (decided
+2026-09-13, mirrors `AM_EMPLOYER_ENROLLMENT_SUMMARY`'s naming: "Detail"
+vs. "Summary" signals row-level download data vs. the aggregate
+dashboard cube) — for the Table widget to bind to. **Confirmed no downstream SQL impact**:
 Semantic Usage is a Datasphere consumption-layer/metadata classification,
 not part of query execution — `DS_EMPLOYER_ENROLLMENT_SUMMARY`'s own
 `SELECT ... FROM "GLD_AE_Employer_Enrollment"` reads the same columns/rows
@@ -1004,7 +1006,8 @@ New objects from this effort, not yet catalogued:
 - `GLD_AE_Employer_Enrollment`
 - `DS_EMPLOYER_ENROLLMENT_SUMMARY`
 - `AM_EMPLOYER_ENROLLMENT_SUMMARY`
-- The Analytic Model on `GLD_AE_Employer_Enrollment` (name TBD), once built
+- `AM_EMPLOYER_ENROLLMENT_DETAIL` (the Analytic Model on
+  `GLD_AE_Employer_Enrollment`), once built
 - The Table+Export Table widget, once built
 - `vEmployerEligibleCount` (Quality (200) CRM space) — see "YoY panel"
   above; found 2026-09-11, not yet catalogued
