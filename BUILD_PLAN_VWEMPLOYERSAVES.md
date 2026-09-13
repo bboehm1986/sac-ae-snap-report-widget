@@ -364,6 +364,34 @@ column's declared type. **Fix: explicit `CAST(... AS DECIMAL(18,2))` on
 both fields in Gold's own SQL** — see the updated SQL above. Needs
 redeploying before retrying the Measure conversion.
 
+**Done 2026-09-13:** all 5 fields marked as Measures; Analytic Model
+`AM_EMPLOYER_ENROLLMENT_DETAIL` created on top of Gold. Table widget
+added to the same page as the dashboard, bound to it as a flat grid — all
+8 Attributes in **Rows** (Employer_Number as the natural key keeps it
+flat rather than pivoted), all 5 Measures in **Columns → Measures**, and
+the fixed `Enrollment_Status = 'Success'` filter applied under
+**Filters**.
+
+**Button + scripted export — tried, not available.** Wanted a small
+"Download" button rather than relying on SAC's right-click export
+directly. Checked two likely places for a Button's On Click script: the
+`{...}` toolbar icon (turned out to be "Link Variables," unrelated) and
+the **Tools** menu (Add New Data / Edit Prompts / Link Dimensions / Chart
+Scaling / Conditional Formatting / Formula Bar / Value Lock Management /
+Cell References and Formulas / Linked Widgets Diagram — no scripting
+option anywhere in that list). **Conclusion:** this is a SAC **Story**
+(not an Analytics Designer Analytic Application) — arbitrary Button
+on-click scripting appears to be an Analytics Designer-only capability,
+not available here. Rebuilding this dashboard in Analytics Designer to
+get a scripted button would be a much bigger undertaking (separate
+authoring tool entirely), not attempted.
+
+**Decided instead:** no custom button. Table shrunk down to a small,
+unobtrusive footprint on the page rather than a large dominant grid, with
+a plain Text widget next to it ("Right-click table → Export to Excel/
+CSV") so the built-in export mechanism is discoverable without a
+dedicated button.
+
 ## Not in this build — pending, added later
 
 - **"Defaulted"** status — definition not yet confirmed. Not part of Gold
