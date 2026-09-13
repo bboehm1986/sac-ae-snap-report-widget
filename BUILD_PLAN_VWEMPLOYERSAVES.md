@@ -463,6 +463,7 @@ SELECT
     CAST(a."HSAONETIMESINGLE" AS DECIMAL(18,2)) AS "HSA_One_Time_Single",
     CAST(a."HSAONETIMEFAMILY" AS DECIMAL(18,2)) AS "HSA_One_Time_Family",
     a."numberOfEmployees"  AS "Employee_Count",
+    a."AttemptedOn"        AS "Last_Attempted_On",
     CASE WHEN a."ResultCode" = 'S' THEN a."SubmittedOn" END AS "Completed_Date",
     CASE WHEN a."ResultCode" = 'A' THEN a."SubmittedOn" END AS "Abandoned_Date"
 FROM (
@@ -478,9 +479,11 @@ LEFT JOIN "vDimEmployer" de
 WHERE a."rn" = 1
 ```
 
-**Status: drafted, not yet deployed** — supersedes everything previously
-built in `GLD_AE_Employer_Enrollment`; needs a full rebuild with this
-version, not an incremental edit, given how much has changed.
+**Status: deployed and confirmed live** (Semantic Usage Fact, 5 Measures,
+`AM_EMPLOYER_ENROLLMENT_DETAIL` built on top — see "Binding the Table"
+above). **`Last_Attempted_On` added 2026-09-13** for the Operational
+widget's Stalled-time-buckets metric — not yet redeployed as of this
+writing.
 
 Then the aggregate cube on top — **combined design, now carrying THREE
 kinds of rows** (Status/Synod, Election Type, and — added 2026-09-10 once
@@ -569,6 +572,56 @@ the aggregate cube), so Gold itself now needs Semantic Usage → Fact and
 five Measures (`HSA_Single`, `HSA_Family`, `HSA_One_Time_Single`,
 `HSA_One_Time_Family`, `Employee_Count`) — see "Binding the Table —
 findings 2026-09-11" above for the full reasoning and trade-off.
+
+## Dashboard split — Executive vs. Operational widgets, started 2026-09-13
+
+Blair wants the single AE Snap Report widget split into two: an
+**Executive/Strategic** widget ("at a glance" for leadership) and an
+**Operational** widget (for teams on the ground). Two separate widget
+projects (codebases/repos), not one widget with a mode toggle — cleaner
+for permissioning, lower-risk to build. **"Days remaining until AE
+window closes" idea dropped** — no known fixed deadline date tracked
+anywhere in this data; not worth guessing at.
+
+**Architecture decided:** both widgets bind to the **same** underlying
+model (`DS_EMPLOYER_ENROLLMENT_SUMMARY`/`AM_EMPLOYER_ENROLLMENT_SUMMARY`),
+extended with 3 new row-kinds needed only by Operational. Executive's
+`main.js` just doesn't render the operational-only row-kinds even though
+they're present in the bound data. Avoids two aggregate cubes drifting
+apart over time.
+
+**Proposed panel split (pending final build):**
+- **Executive:** top 5 KPI tiles, Synod/Region completion progress,
+  Health Plan mix as % (not raw counts), Year-over-Year Changes,
+  Eligible Employees as its own headline (not just a YoY delta line),
+  Abandoned-specific callout (separate from the general Non-Completed
+  bucket), lowest-performing-region callout. No Timeline, no per-status
+  detail, no HSA detail, no download table.
+- **Operational:** trimmed top tiles (Total Set Up/Completed/Non-
+  Completed), Non-Completed — By Status, **new**: same broken out per
+  Synod (richer cross-tab — reuses the *existing* Status/Synod block's
+  data, which already groups by both dimensions together; just a new JS
+  parse/render, no new SQL), **new**: Multiple Attempts count, **new**:
+  Stalled-time buckets (0-7/8-14/15+ days since last attempt), **new**:
+  Recently Completed (last 2 days), Of Complete — Election Type, HSA
+  Elections, full Timeline, the Table+Export download (the existing
+  Table widget just needs to sit on this new page too — no rebuild).
+
+**New SQL needed for Operational's 3 new metrics** — added to Gold
+(expose `Last_Attempted_On`, previously only used internally for the
+dedup) and 3 new `UNION ALL` blocks in the combined cube (Multiple
+Attempts, Stalled buckets, Recently Completed). Full replacement SQL for
+both objects given to Blair 2026-09-13 — see updated versions below.
+**Flagged, not yet verified:** `DAYS_BETWEEN`/`ADD_DAYS` are real HANA
+functions but their exact argument order/behavior hasn't been confirmed
+against this Datasphere instance — given how many HANA-specific
+surprises this project has hit, test these 3 new blocks (or bisect the
+whole cube the same way the `Enrollment_Year` bug was isolated) if the
+full redeploy fails. **Status: SQL given, not yet deployed.**
+
+**Not yet started:** scaffolding the two new widget projects themselves
+(new folders/repos, `widget.json` + `main.js` for each, reusing the
+existing design system/CSS). Comes after the SQL is confirmed working.
 
 ## Synod/Region panel redesigned into completion progress — 2026-09-12
 
@@ -901,7 +954,66 @@ SELECT
     SUM("EligibleCount")                    AS "EmployeeCount"
 FROM "vEmployerEligibleCount"
 GROUP BY "EnrollmentYear"
+
+UNION ALL
+
+-- Added 2026-09-13 for the Operational widget — see "Dashboard split" above
+SELECT
+    CAST('' AS NVARCHAR(50))                   AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))                   AS "Enrollment_Status",
+    CAST('Multiple Attempts' AS NVARCHAR(50))  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)                    AS "Date",
+    NULL                                       AS "Enrollment_Year",
+    COUNT(*)                                   AS "EmployerCount",
+    CAST(NULL AS DECIMAL)                      AS "EmployeeCount"
+FROM (
+    SELECT "RequestId" FROM "vEmployerSaves" GROUP BY "RequestId" HAVING COUNT(*) > 1
+) x2
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))  AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))  AS "Enrollment_Status",
+    "Bucket"                  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)   AS "Date",
+    NULL                      AS "Enrollment_Year",
+    COUNT(*)                  AS "EmployerCount",
+    CAST(NULL AS DECIMAL)     AS "EmployeeCount"
+FROM (
+    SELECT
+        CASE
+            WHEN DAYS_BETWEEN("Last_Attempted_On", CURRENT_DATE) <= 7 THEN 'Stalled 0-7 Days'
+            WHEN DAYS_BETWEEN("Last_Attempted_On", CURRENT_DATE) <= 14 THEN 'Stalled 8-14 Days'
+            ELSE 'Stalled 15+ Days'
+        END AS "Bucket"
+    FROM "GLD_AE_Employer_Enrollment"
+    WHERE "Enrollment_Status" != 'Success'
+) y
+GROUP BY "Bucket"
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))                    AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))                    AS "Enrollment_Status",
+    CAST('Recently Completed' AS NVARCHAR(50))  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)                     AS "Date",
+    NULL                                        AS "Enrollment_Year",
+    COUNT(*)                                    AS "EmployerCount",
+    CAST(NULL AS DECIMAL)                       AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Enrollment_Status" = 'Success' AND "Completed_Date" >= ADD_DAYS(CURRENT_DATE, -2)
 ```
+
+**Status: deployed and confirmed live through the "Eligible Count" block
+(9 blocks total) — see "Download experience"/"YoY panel" sections above
+for the full verification trail. The 3 new blocks above (Multiple
+Attempts, Stalled buckets, Recently Completed) were added 2026-09-13 for
+the Operational widget — not yet deployed/verified.** `DAYS_BETWEEN`/
+`ADD_DAYS` argument order/behavior unconfirmed against this Datasphere
+instance; bisect (same method used for the `Enrollment_Year` bug) if the
+redeploy fails.
 
 **Important:** if you already have a `Year` attribute sitting in this
 view's Model Properties from the earlier failed attempts, delete it
