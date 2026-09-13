@@ -392,6 +392,20 @@ a plain Text widget next to it ("Right-click table → Export to Excel/
 CSV") so the built-in export mechanism is discoverable without a
 dedicated button.
 
+**Linked Analysis — done 2026-09-13.** Input Controls (Enrollment_Status,
+Synod_Region) didn't filter the Table at first — expected, not a bug:
+they're bound to `AM_EMPLOYER_ENROLLMENT_SUMMARY`'s dimensions, and SAC
+has no way to know those are "the same" as `AM_EMPLOYER_ENROLLMENT_
+DETAIL`'s own same-named dimensions across two unrelated models without
+being told explicitly. Fixed via **Tools → Link Dimensions**, mapping
+each model's `Enrollment_Status`/`Synod_Region` to the other's. Confirmed
+working — the Table now filters along with the dashboard.
+
+**Status: download experience complete.** Gold (Fact + 5 Measures) →
+`AM_EMPLOYER_ENROLLMENT_DETAIL` → Table widget (flat grid, fixed
+`Enrollment_Status = 'Success'` filter, shrunk footprint + explanatory
+Text) → Linked Analysis via Link Dimensions, all working end to end.
+
 ## Not in this build — pending, added later
 
 - **"Defaulted"** status — definition not yet confirmed. Not part of Gold
