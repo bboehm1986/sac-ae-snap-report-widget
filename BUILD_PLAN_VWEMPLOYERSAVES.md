@@ -1013,7 +1013,7 @@ SELECT
     CAST('' AS NVARCHAR(50))  AS "Enrollment_Status",
     CAST('' AS NVARCHAR(50))  AS "Election_Category",
     CAST(CAST("Completed_Date" AS DATE) AS TIMESTAMP) AS "Date",
-    NULL                      AS "Enrollment_Year",
+    2027                      AS "Enrollment_Year",
     COUNT(*)                  AS "EmployerCount",
     CAST(NULL AS DECIMAL)     AS "EmployeeCount"
 FROM "GLD_AE_Employer_Enrollment"
@@ -1700,3 +1700,66 @@ other panel. Pushed:
 Widgets list (delete-and-recreate, per the confirmed refresh
 limitation above) — needed before either Story actually shows this
 change.
+
+## Timeline — YoY comparison (2026 vs 2027), started 2026-09-14
+
+Blair spotted a `900` on today's date in the live Timeline (every other
+day was single digits) while looking at real data — flagged as a
+likely bug, separate from this work (needs `SELECT * FROM
+"GLD_AE_Employer_Enrollment" WHERE CAST("Completed_Date" AS DATE) =
+CURRENT_DATE` to investigate; not yet looked into). While discussing
+it, the real ask surfaced: show each day of the election window
+(10/1–10/14) with **how many completed on that calendar day last year
+(2026) next to how many are completing on that day this year (2027)**
+— a genuine two-series YoY comparison, not a single-series grid.
+**Scoped to the Snap Report widget specifically** (Blair's own
+wording, twice) — Operational's Timeline is untouched for now; ask
+before propagating this there too.
+
+**New 12th cube block — `DS_EMPLOYER_ENROLLMENT_SUMMARY`.** Groups
+`ZVHCM_AE_1_26Q` by `ACTDATE`, same dedup pattern as the YoY view
+(`ROW_NUMBER() OVER (PARTITION BY EMPRNO ORDER BY ACTDATE DESC)`),
+excluding the `"00000000"` null-date sentinel. Requires changing the
+*existing* `Completed_Date`/Timeline block's `Enrollment_Year` from
+`NULL` to `2027` (safe — nothing currently reads that column on
+Timeline rows) so the two years can be told apart once both populate
+`Date`. `TO_DATE("ACTDATE", 'YYYYMMDD')` is **untested against this
+Datasphere instance** — test in a throwaway view first; fallback if it
+fails: `CAST(SUBSTR("ACTDATE",1,4) || '-' || SUBSTR("ACTDATE",5,2) ||
+'-' || SUBSTR("ACTDATE",7,2) AS DATE)`.
+
+```sql
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))  AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))  AS "Enrollment_Status",
+    CAST('' AS NVARCHAR(50))  AS "Election_Category",
+    CAST(TO_DATE(z."ACTDATE", 'YYYYMMDD') AS TIMESTAMP) AS "Date",
+    2026                      AS "Enrollment_Year",
+    COUNT(*)                  AS "EmployerCount",
+    CAST(NULL AS DECIMAL)     AS "EmployeeCount"
+FROM (
+    SELECT "ACTDATE"
+    FROM (
+        SELECT "EMPRNO", "ACTDATE",
+            ROW_NUMBER() OVER (PARTITION BY "EMPRNO" ORDER BY "ACTDATE" DESC) AS "rn"
+        FROM "ZVHCM_AE_1_26Q"
+    ) ranked
+    WHERE "rn" = 1 AND "ACTDATE" != '00000000'
+) z
+GROUP BY TO_DATE(z."ACTDATE", 'YYYYMMDD')
+```
+
+**Status: written, not yet deployed.**
+
+**Rendering decision:** Blair wants a **grouped bar chart** (2026 bar +
+2027 bar side by side per day), not the heatmap grid — a direct
+comparison reads better as two bars than as a single-series intensity
+grid. This replaces the heatmap grid *on the Timeline specifically* for
+the Snap Report widget only; the heatmap-grid work above stays as-is
+everywhere else (Operational's Timeline, and every other panel on both
+widgets). Chart needs to align the two years by **calendar month/day
+only, year stripped** (2026-10-01 and 2027-10-01 both bucket under
+"10/1") since the two years' absolute dates don't match. Not yet built
+— next step.
