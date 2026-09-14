@@ -1878,6 +1878,12 @@ v1.0.16
 (`sha384-Bux96FRvdWPDbc8WITVxbx6MiFFhIA2r26aLimAUi+k9XozQDahI2QfznthS75Ga`).
 
 **Not an Ahmed/pipeline issue after all** — no escalation needed for
-this one. **Still needs:** re-registering the widget in SAC to pick up
-v1.0.16 on live data, and confirming the tiles show sane numbers once
-that's done.
+this one.
+
+**CLOSED — confirmed fixed on live data, 2026-09-14.** Widget
+re-registered on v1.0.16, Dimensions/Measures rebound
+(`Enrollment_Status`/`Synod_Region`/`Election_Category`/`Date`/
+`Enrollment_Year`; `EmployerCount`/`EmployeeCount`). Blair confirmed
+the Employer Selection tiles now show correct numbers. Issue 1 (the
+900 identically-timestamped "completions") remains open separately —
+see above.
