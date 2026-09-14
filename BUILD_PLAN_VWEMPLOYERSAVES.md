@@ -1358,7 +1358,7 @@ same time — every other row-kind leaves one or the other blank.
    document the new row-kind (same pattern as the other 3 operational
    row-kinds added 2026-09-13).
 
-### Per-employer 2026-vs-2027 drill-down — spec finalized 2026-09-14, not yet built
+### Per-employer 2026-vs-2027 drill-down — spec finalized and SQL verified 2026-09-14, not yet built
 
 Blair confirmed the employer-selector **Input Control lives outside
 the custom widget** and filters a **native SAC Table** — not
@@ -1478,20 +1478,26 @@ passes both through as-is, labeled by year, rather than guessing at a
 mapping. (`Status_Sort_Order` above only orders the 2027 side, which is
 the one with a known, confirmed vocabulary.)
 
-**Flagged, unverified about the new `ACTDATE` dedup:**
-- `ACTDATE` is `String(8)` in the source, format not confirmed against
-  live data. `ORDER BY "ACTDATE" DESC` sorts correctly as a date only if
-  it's a zero-padded, purely-numeric `YYYYMMDD` string (standard SAP
-  convention, and the most likely case) — check a Data Preview before
-  trusting this, and if it turns out to need parsing, this is exactly
-  the kind of `CAST` that broke the cube earlier in this project, so
-  test it in a throwaway view first rather than pasting straight into
-  the real one.
-- Whether `ORDER BY "ACTDATE" DESC` alone breaks ties sensibly, or
-  whether `PROCDATE` needs to participate too, isn't confirmed — see
-  BR-3 in the `2026-employer-annual-elections.md` catalogue entry.
-- This whole dedup is **proposed, not yet tested against live data** —
-  same handoff-spec caveat as the rest of this section.
+**`ACTDATE` dedup — verified against live data, 2026-09-14.** Two
+throwaway-view queries against `ZVHCM_AE_1_26Q` confirmed:
+- Clean `YYYYMMDD` 8-digit strings on both `ACTDATE`/`PROCDATE` — plain
+  `ORDER BY "ACTDATE" DESC` sorts correctly as a date, no `CAST` needed
+  (avoiding the exact class of casting bug that broke the cube earlier
+  in this project).
+- The object is effectively one-row-per-`EMPRNO` already — only one
+  employer (`42234`) out of the whole object has more than one row.
+- `"00000000"` is SAP's standard null-date sentinel — `ACTDATE` is
+  unset on records that were never actioned (confirmed via `42234`,
+  whose two rows are both `STATUS = "Undetermined"`).
+
+**One known, accepted limitation:** when an employer's duplicate rows
+are ALL `Undetermined` (`ACTDATE = "00000000"` on every one, `42234`'s
+case), the dedup can't distinguish "most recent" among them — there's
+no real action to be most recent, so `ROW_NUMBER()` picks one
+arbitrarily. Not engineered around, since no other field reliably
+breaks the tie either (their shared `PROCDATE` is identical too) and
+this currently affects zero employers besides `42234` — see BR-3 in
+the `2026-employer-annual-elections.md` catalogue entry for full detail.
 
 ### Table configuration spec (for building in SAC)
 
@@ -1517,23 +1523,23 @@ the one with a known, confirmed vocabulary.)
    No selection = full sorted list (the "constructive default state");
    one employer selected = single row, both years' data side by side.
 
-**Flagged, unconfirmed:**
+**Resolved 2026-09-14:** whether `EMPRNO` is genuinely one-row-per-
+employer on `ZVHCM_AE_1_26Q` — **confirmed effectively yes** (only one
+employer out of the whole object has >1 row, and it's a genuine
+never-finalized-draft case, not a data-quality issue). See "`ACTDATE`
+dedup — verified against live data" above and BR-3 in the
+`2026-employer-annual-elections.md` catalogue entry.
+
+**Still flagged, unconfirmed:**
 - `ZVHCM_AE_1_26Q`'s HSA/`EECOUNT` numeric field types were never
   independently verified (only its catalogue entry's field-name match
   was) — may need `CAST(...)` once this is actually deployed, same as
   `HSA_One_Time_Single/Family` needed in Gold originally.
-- Whether `EMPRNO` is genuinely one-row-per-employer on
-  `ZVHCM_AE_1_26Q` isn't fully confirmed either — the catalogue entry
-  notes only 5 sample rows were checked and the `COUNTER`-implied
-  CUBE-grain possibility isn't ruled out. If it turns out to be
-  coarser-grained, this join could fan out or need its own dedup (same
-  `ROW_NUMBER() OVER (...)` pattern Gold already uses on
-  `vEmployerSaves`).
 - `AM_EMPLOYER_ENROLLMENT_YOY` (or whatever this model gets named), the
   native Table, and the Input Control itself are all **not yet built**
   — this whole section is a handoff spec, same caveat as the original
-  Datasphere View Spec at the top of this doc. Design is confirmed;
-  execution isn't started.
+  Datasphere View Spec at the top of this doc. Design is confirmed and
+  the SQL is now verified against live data; execution isn't started.
 
 **Not yet started:** cataloguing `GLD_AE_Employer_Enrollment_YoY` and
 its Analytic Model once built — add to the "Last step" list above.
