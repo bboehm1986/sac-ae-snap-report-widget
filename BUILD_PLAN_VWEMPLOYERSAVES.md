@@ -1445,11 +1445,14 @@ SELECT
     g."HSA_One_Time_Family"      AS "HSA_One_Time_Family_2027",
     y26."STATUS"                 AS "Status_2026",
     y26."CONTRIBUTIONSET"        AS "Contribution_Set_2026",
-    y26."HSA_HRA_SINGLE"         AS "HSA_Single_2026",
-    y26."HSA_HRA_FAMILY"         AS "HSA_Family_2026",
-    y26."HSAONETIMESINGLE"       AS "HSA_One_Time_Single_2026",
-    y26."HSAONETIMEFAMILY"       AS "HSA_One_Time_Family_2026",
-    y26."EECOUNT"                AS "Employee_Count_2026",
+    -- CAST added 2026-09-14 -- confirmed via Model Properties that all 5
+    -- numeric fields on ZVHCM_AE_1_26Q come through as String(15), same
+    -- issue HSA_One_Time_Single/Family originally had in Gold.
+    CAST(y26."HSA_HRA_SINGLE"   AS DECIMAL(18,2)) AS "HSA_Single_2026",
+    CAST(y26."HSA_HRA_FAMILY"   AS DECIMAL(18,2)) AS "HSA_Family_2026",
+    CAST(y26."HSAONETIMESINGLE" AS DECIMAL(18,2)) AS "HSA_One_Time_Single_2026",
+    CAST(y26."HSAONETIMEFAMILY" AS DECIMAL(18,2)) AS "HSA_One_Time_Family_2026",
+    CAST(y26."EECOUNT"          AS BIGINT)        AS "Employee_Count_2026",
     y26."ACTDATE"                AS "Action_Date_2026"
 FROM "GLD_AE_Employer_Enrollment" g
 LEFT JOIN (
