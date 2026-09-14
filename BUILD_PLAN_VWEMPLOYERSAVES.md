@@ -1404,11 +1404,27 @@ line** — corrected version below is the one to paste in.
 
 ```sql
 SELECT
-    g."Employer_Number"          AS "Employer_Number",
-    g."Employer_Name"            AS "Employer_Name",
-    g."Synod_Region"             AS "Synod_Region",
-    g."Employee_Count"           AS "Employee_Count_2027",
-    eb."EligibleCount"           AS "Eligible_Count_2027",
+    -- Every plain pass-through column below is wrapped in a no-op
+    -- COALESCE(col, col) -- added 2026-09-14. Confirmed via the Model
+    -- Properties Technical Name popup: a straight passthrough column
+    -- inherits its ORIGINAL source column's persisted Business Name in
+    -- Datasphere, silently ignoring this view's own "AS" rename --
+    -- only a genuinely computed column (like Eligible_Band below) gets
+    -- a fresh Business Name matching the SQL alias. Concretely, this
+    -- view's plain `y26."CONTRIBUTIONSET" AS "Contribution_Set_2026"`
+    -- was displaying as "Comment" (ZVHCM_AE_1_26Q's own leftover
+    -- Business Name for that field) and `g."Contribution_Set" AS
+    -- "Contribution_Set_2027"` was displaying as "CONTRIBUTIONSET"
+    -- (Gold's own inherited Business Name) -- both fully functional,
+    -- fully distinct columns, just dangerously mislabeled in the
+    -- Builder UI (picking the wrong one silently swaps 2026/2027 data).
+    -- The COALESCE wrapper forces Datasphere to treat each as an
+    -- expression, giving it a fresh Business Name from this alias.
+    COALESCE(g."Employer_Number", g."Employer_Number")     AS "Employer_Number",
+    COALESCE(g."Employer_Name", g."Employer_Name")         AS "Employer_Name",
+    COALESCE(g."Synod_Region", g."Synod_Region")           AS "Synod_Region",
+    COALESCE(g."Employee_Count", g."Employee_Count")       AS "Employee_Count_2027",
+    COALESCE(eb."EligibleCount", eb."EligibleCount")       AS "Eligible_Count_2027",
     COALESCE(
         CASE
             WHEN eb."EligibleCount" >= 20 THEN '20+'
@@ -1427,7 +1443,7 @@ SELECT
         WHEN eb."EligibleCount" IS NOT NULL THEN 4
         ELSE 5
     END                           AS "Band_Sort_Order",
-    g."Enrollment_Status"        AS "Status_2027",
+    COALESCE(g."Enrollment_Status", g."Enrollment_Status") AS "Status_2027",
     -- Sort-helper, not for display — non-completed statuses first.
     CASE g."Enrollment_Status"
         WHEN 'Not Started'      THEN 1
@@ -1437,23 +1453,25 @@ SELECT
         WHEN 'Success'          THEN 5
         ELSE 6
     END                           AS "Status_Sort_Order",
-    g."Contribution_Set"         AS "Contribution_Set_2027",
-    g."Health_Plan_Bundle"       AS "Health_Plan_Bundle_2027",
-    g."HSA_Single"               AS "HSA_Single_2027",
-    g."HSA_Family"               AS "HSA_Family_2027",
-    g."HSA_One_Time_Single"      AS "HSA_One_Time_Single_2027",
-    g."HSA_One_Time_Family"      AS "HSA_One_Time_Family_2027",
-    y26."STATUS"                 AS "Status_2026",
-    y26."CONTRIBUTIONSET"        AS "Contribution_Set_2026",
+    COALESCE(g."Contribution_Set", g."Contribution_Set")           AS "Contribution_Set_2027",
+    COALESCE(g."Health_Plan_Bundle", g."Health_Plan_Bundle")       AS "Health_Plan_Bundle_2027",
+    COALESCE(g."HSA_Single", g."HSA_Single")                       AS "HSA_Single_2027",
+    COALESCE(g."HSA_Family", g."HSA_Family")                       AS "HSA_Family_2027",
+    COALESCE(g."HSA_One_Time_Single", g."HSA_One_Time_Single")     AS "HSA_One_Time_Single_2027",
+    COALESCE(g."HSA_One_Time_Family", g."HSA_One_Time_Family")     AS "HSA_One_Time_Family_2027",
+    COALESCE(y26."STATUS", y26."STATUS")                 AS "Status_2026",
+    COALESCE(y26."CONTRIBUTIONSET", y26."CONTRIBUTIONSET") AS "Contribution_Set_2026",
     -- CAST added 2026-09-14 -- confirmed via Model Properties that all 5
     -- numeric fields on ZVHCM_AE_1_26Q come through as String(15), same
-    -- issue HSA_One_Time_Single/Family originally had in Gold.
+    -- issue HSA_One_Time_Single/Family originally had in Gold. CAST is
+    -- itself an expression, so these 5 already get correct Business
+    -- Names without needing the COALESCE wrapper too.
     CAST(y26."HSA_HRA_SINGLE"   AS DECIMAL(18,2)) AS "HSA_Single_2026",
     CAST(y26."HSA_HRA_FAMILY"   AS DECIMAL(18,2)) AS "HSA_Family_2026",
     CAST(y26."HSAONETIMESINGLE" AS DECIMAL(18,2)) AS "HSA_One_Time_Single_2026",
     CAST(y26."HSAONETIMEFAMILY" AS DECIMAL(18,2)) AS "HSA_One_Time_Family_2026",
     CAST(y26."EECOUNT"          AS BIGINT)        AS "Employee_Count_2026",
-    y26."ACTDATE"                AS "Action_Date_2026"
+    COALESCE(y26."ACTDATE", y26."ACTDATE")        AS "Action_Date_2026"
 FROM "GLD_AE_Employer_Enrollment" g
 LEFT JOIN (
     SELECT "EMPRNO", "EligibleCount"
