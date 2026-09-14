@@ -1440,14 +1440,34 @@ SELECT
     y26."HSA_HRA_FAMILY"         AS "HSA_Family_2026",
     y26."HSAONETIMESINGLE"       AS "HSA_One_Time_Single_2026",
     y26."HSAONETIMEFAMILY"       AS "HSA_One_Time_Family_2026",
-    y26."EECOUNT"                AS "Employee_Count_2026"
+    y26."EECOUNT"                AS "Employee_Count_2026",
+    y26."ACTDATE"                AS "Action_Date_2026"
 FROM "GLD_AE_Employer_Enrollment" g
 LEFT JOIN (
     SELECT "EMPRNO", "EligibleCount"
     FROM "vEmployerEligibleCount"
     WHERE "EnrollmentYear" = 2027
 ) eb ON eb."EMPRNO" = g."Employer_Number"
-LEFT JOIN "ZVHCM_AE_1_26Q" y26 ON y26."EMPRNO" = g."Employer_Number"
+LEFT JOIN (
+    -- Dedup to one row per employer — added 2026-09-14, once PROCDATE/
+    -- ACTDATE were found on ZVHCM_AE_1_26Q (see BR-3 in its catalogue
+    -- entry). Mirrors the exact pattern Gold already uses to dedupe
+    -- vEmployerSaves by RequestId/AttemptedOn — same idea, latest action
+    -- wins, applied here by EMPRNO/ACTDATE instead. Without this, the
+    -- LEFT JOIN below could fan out if COUNTER's CUBE-like grain really
+    -- does mean more than one row per employer (still not independently
+    -- confirmed either way — see the Grain note in that catalogue entry).
+    SELECT *
+    FROM (
+        SELECT
+            "EMPRNO", "STATUS", "CONTRIBUTIONSET", "HSA_HRA_SINGLE",
+            "HSA_HRA_FAMILY", "HSAONETIMESINGLE", "HSAONETIMEFAMILY",
+            "EECOUNT", "ACTDATE",
+            ROW_NUMBER() OVER (PARTITION BY "EMPRNO" ORDER BY "ACTDATE" DESC) AS "rn"
+        FROM "ZVHCM_AE_1_26Q"
+    ) ranked
+    WHERE "rn" = 1
+) y26 ON y26."EMPRNO" = g."Employer_Number"
 ```
 
 **Deliberately not attempted here:** reconciling `Status_2026` (Matt's
@@ -1457,6 +1477,21 @@ is the same open question already flagged to Ahmed above. The view
 passes both through as-is, labeled by year, rather than guessing at a
 mapping. (`Status_Sort_Order` above only orders the 2027 side, which is
 the one with a known, confirmed vocabulary.)
+
+**Flagged, unverified about the new `ACTDATE` dedup:**
+- `ACTDATE` is `String(8)` in the source, format not confirmed against
+  live data. `ORDER BY "ACTDATE" DESC` sorts correctly as a date only if
+  it's a zero-padded, purely-numeric `YYYYMMDD` string (standard SAP
+  convention, and the most likely case) — check a Data Preview before
+  trusting this, and if it turns out to need parsing, this is exactly
+  the kind of `CAST` that broke the cube earlier in this project, so
+  test it in a throwaway view first rather than pasting straight into
+  the real one.
+- Whether `ORDER BY "ACTDATE" DESC` alone breaks ties sensibly, or
+  whether `PROCDATE` needs to participate too, isn't confirmed — see
+  BR-3 in the `2026-employer-annual-elections.md` catalogue entry.
+- This whole dedup is **proposed, not yet tested against live data** —
+  same handoff-spec caveat as the rest of this section.
 
 ### Table configuration spec (for building in SAC)
 
