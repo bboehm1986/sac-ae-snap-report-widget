@@ -1249,3 +1249,204 @@ New objects from this effort, not yet catalogued:
 AE_EE family) — confirm whether these are the same object under two
 names, or genuinely two different views, before cataloguing anything new
 under either name.
+
+## Operational — employer-size focus, started 2026-09-14
+
+Blair: the Operational dashboard needs to be more employer-focused —
+KPIs that show how employers are moving through the process by size
+("employers with 3+ eligible employees are still not started"), plus
+the ability to select one employer and see their 2026 vs. 2027
+elections side by side. Input Control lives **outside** the custom
+widget (Blair's own call, 2026-09-14) — same pattern as the existing
+Synod/Status Linked Analysis filters, not a new mechanism.
+
+**Eligible Employee Band — confirmed 2026-09-14 by Blair: mutually-
+exclusive tiers**, not overlapping "at least" flags. One band per
+employer: `Under 3` / `3-9` / `10-19` / `20+`. An employer missing from
+`vEmployerEligibleCount` entirely falls into an explicit `Unknown` band
+rather than silently disappearing from the count.
+
+**Design choice (mine, flagged for Blair to adjust):** rather than a
+literal "3+ eligible employees" cumulative-threshold callout (which
+would contradict the tiers decision above), the size-aware KPI is a
+**per-band completion-progress panel** — same `_progressRowsHtml` design
+already used for Executive's Synod panel (`X of Y completed` + % bar),
+just banded by size instead of by region, ordered largest-first (`20+`
+→ `10-19` → `3-9` → `Under 3`). This answers "how employers are moving
+through the process, by size" directly. A headline callout for the
+largest band's outstanding count (mirroring Executive's "needs
+attention: lowest region" line) covers the literal "still not started"
+framing on top of that.
+
+### New cube SQL — Status × Eligible Band
+
+New `UNION ALL` block for `DS_EMPLOYER_ENROLLMENT_SUMMARY`, following
+the same full-aliasing / consistent-expression-shape rules the rest of
+this cube already learned the hard way. Bands computed against
+`vEmployerEligibleCount`'s 2027 rows (Gold is a 2027-only view, so this
+matches it to the same plan year):
+
+```sql
+UNION ALL
+
+-- Status x Eligible Employee Band — new 2026-09-14, for Operational's
+-- size-aware "still Not Started" KPIs. Employers missing a 2027 row in
+-- vEmployerEligibleCount fall into an explicit "Unknown" band rather
+-- than disappearing from the count.
+SELECT
+    CAST('' AS NVARCHAR(50))  AS "Synod_Region",
+    z."Enrollment_Status"     AS "Enrollment_Status",
+    z."Band"                  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)   AS "Date",
+    NULL                      AS "Enrollment_Year",
+    COUNT(*)                  AS "EmployerCount",
+    CAST(NULL AS DECIMAL)     AS "EmployeeCount"
+FROM (
+    SELECT
+        g."Enrollment_Status" AS "Enrollment_Status",
+        COALESCE(
+            CASE
+                WHEN eb."EligibleCount" >= 20 THEN '20+'
+                WHEN eb."EligibleCount" >= 10 THEN '10-19'
+                WHEN eb."EligibleCount" >= 3  THEN '3-9'
+                WHEN eb."EligibleCount" IS NOT NULL THEN 'Under 3'
+                ELSE 'Unknown'
+            END, 'Unknown'
+        ) AS "Band"
+    FROM "GLD_AE_Employer_Enrollment" g
+    LEFT JOIN (
+        SELECT "EMPRNO", "EligibleCount"
+        FROM "vEmployerEligibleCount"
+        WHERE "EnrollmentYear" = 2027
+    ) eb ON eb."EMPRNO" = g."Employer_Number"
+) z
+GROUP BY z."Enrollment_Status", z."Band"
+```
+
+**Status: written, not yet deployed** — needs to be pasted in as an
+11th `UNION ALL` block onto the existing 10-block cube (9 original +
+the 1 "Eligible Count" block already counted above; the 3 operational
+blocks from 2026-09-13 bring it to 10). No new Attribute should appear
+in `AM_EMPLOYER_ENROLLMENT_SUMMARY`'s Model Properties — this block
+reuses `Enrollment_Status`/`Election_Category`/`EmployerCount`, all
+already-bound columns, so no Builder-panel rebinding needed. Row-kind
+is distinguishable in `main.js` because it's the *only* row-kind where
+both `Enrollment_Status` and `Election_Category` are populated at the
+same time — every other row-kind leaves one or the other blank.
+
+### `main.js` changes (Operational widget only — Executive doesn't get this panel)
+
+1. New `BAND_ORDER = ["20+", "10-19", "3-9", "Under 3", "Unknown"]`
+   constant.
+2. `_parseEmployerStatus()`: new `if (status && subType && BAND_ORDER.
+   includes(subType))` branch (checked before the generic safety net),
+   tracking `byBand[band] = { total, completed }` the same shape as
+   `bySynod`.
+3. Copied `_progressRowsHtml()` and the `.progress-track`/`.progress-
+   fill` CSS from the Executive widget verbatim (Operational didn't
+   have this helper yet — Operational's own Synod treatment is the
+   richer cross-tab, not a progress panel).
+4. New section "Not Yet Completed — By Employer Size", placed right
+   after the top KPI tiles (high visual priority, per Blair's framing
+   that this dashboard needs to be "more employer focused") — a
+   progress-row per band, largest-first, plus a callout line for the
+   `20+` band's outstanding (non-completed) count if any exist.
+5. Mock data extended with a representative spread of Status × Band
+   combinations, including one `Unknown` row, so the panel is demoable
+   before real data is bound.
+6. `widget.json`'s `employerStatus` binding description updated to
+   document the new row-kind (same pattern as the other 3 operational
+   row-kinds added 2026-09-13).
+
+### Per-employer 2026-vs-2027 drill-down — spec only, not yet built
+
+Blair confirmed the employer-selector **Input Control lives outside
+the custom widget** and filters a **native SAC Table/Chart** — not
+custom-widget code — via the same Linked Analysis mechanism already
+used elsewhere on this Story. This mirrors the Table+Export download
+decision (native component, sidesteps the confirmed View-mode click-
+delivery bug entirely) rather than re-litigating it.
+
+**Proposed single-Table design** (not yet confirmed with Blair — flag
+before building): one native Table, one wide employer-grain model, both
+years' fields as separate columns on the same row, **default-sorted to
+double as the "constructive default state"** Blair asked for (largest
+`Eligible_Band` first, non-completed status first) when no employer is
+selected. Selecting one employer via the Input Control narrows the same
+Table to that employer's single row, showing 2026 and 2027 side by
+side — no second widget or view-swapping needed. This is a design
+proposal, not a built thing; confirm before spending SAC build time on
+it.
+
+**New view needed — `GLD_AE_Employer_Enrollment_YoY`** (name not yet
+confirmed), joining Gold (2027) to Matt Christensen's `ZVHCM_AE_1_26Q`
+(2026, catalogued as a Near-Duplicate of AE_Employer Election — see
+`data-catalogue/products/2026-employer-annual-elections.md`) by
+`EMPRNO`/`Employer_Number`:
+
+```sql
+CREATE VIEW "GLD_AE_Employer_Enrollment_YoY" AS
+SELECT
+    g."Employer_Number"          AS "Employer_Number",
+    g."Employer_Name"            AS "Employer_Name",
+    g."Synod_Region"             AS "Synod_Region",
+    g."Employee_Count"           AS "Employee_Count_2027",
+    eb."EligibleCount"           AS "Eligible_Count_2027",
+    COALESCE(
+        CASE
+            WHEN eb."EligibleCount" >= 20 THEN '20+'
+            WHEN eb."EligibleCount" >= 10 THEN '10-19'
+            WHEN eb."EligibleCount" >= 3  THEN '3-9'
+            WHEN eb."EligibleCount" IS NOT NULL THEN 'Under 3'
+            ELSE 'Unknown'
+        END, 'Unknown'
+    )                             AS "Eligible_Band",
+    g."Enrollment_Status"        AS "Status_2027",
+    g."Contribution_Set"         AS "Contribution_Set_2027",
+    g."Health_Plan_Bundle"       AS "Health_Plan_Bundle_2027",
+    g."HSA_Single"               AS "HSA_Single_2027",
+    g."HSA_Family"               AS "HSA_Family_2027",
+    g."HSA_One_Time_Single"      AS "HSA_One_Time_Single_2027",
+    g."HSA_One_Time_Family"      AS "HSA_One_Time_Family_2027",
+    y26."STATUS"                 AS "Status_2026",
+    y26."CONTRIBUTIONSET"        AS "Contribution_Set_2026",
+    y26."HSA_HRA_SINGLE"         AS "HSA_Single_2026",
+    y26."HSA_HRA_FAMILY"         AS "HSA_Family_2026",
+    y26."HSAONETIMESINGLE"       AS "HSA_One_Time_Single_2026",
+    y26."HSAONETIMEFAMILY"       AS "HSA_One_Time_Family_2026",
+    y26."EECOUNT"                AS "Employee_Count_2026"
+FROM "GLD_AE_Employer_Enrollment" g
+LEFT JOIN (
+    SELECT "EMPRNO", "EligibleCount"
+    FROM "vEmployerEligibleCount"
+    WHERE "EnrollmentYear" = 2027
+) eb ON eb."EMPRNO" = g."Employer_Number"
+LEFT JOIN "ZVHCM_AE_1_26Q" y26 ON y26."EMPRNO" = g."Employer_Number"
+```
+
+**Deliberately not attempted here:** reconciling `Status_2026` (Matt's
+`Undetermined`/`Completed EL`/`Completed OTP` vocabulary) against
+`Status_2027` (`Success`/`Abandoned`/etc.) into one common status — this
+is the same open question already flagged to Ahmed above. The view
+passes both through as-is, labeled by year, rather than guessing at a
+mapping.
+
+**Flagged, unconfirmed:**
+- `ZVHCM_AE_1_26Q`'s HSA/`EECOUNT` numeric field types were never
+  independently verified (only its catalogue entry's field-name match
+  was) — may need `CAST(...)` once this is actually deployed, same as
+  `HSA_One_Time_Single/Family` needed in Gold originally.
+- Whether `EMPRNO` is genuinely one-row-per-employer on
+  `ZVHCM_AE_1_26Q` isn't fully confirmed either — the catalogue entry
+  notes only 5 sample rows were checked and the `COUNTER`-implied
+  CUBE-grain possibility isn't ruled out. If it turns out to be
+  coarser-grained, this join could fan out or need its own dedup (same
+  `ROW_NUMBER() OVER (...)` pattern Gold already uses on
+  `vEmployerSaves`).
+- `AM_EMPLOYER_ENROLLMENT_YOY` (or whatever this model gets named), the
+  native Table, and the Input Control itself are all **not yet built**
+  — this section is a handoff spec, not a completed step, same caveat
+  as the original Datasphere View Spec at the top of this doc.
+
+**Not yet started:** cataloguing `GLD_AE_Employer_Enrollment_YoY` and
+its Analytic Model once built — add to the "Last step" list above.
