@@ -1392,8 +1392,17 @@ confirmed), joining Gold (2027) to Matt Christensen's `ZVHCM_AE_1_26Q`
 `data-catalogue/products/2026-employer-annual-elections.md`) by
 `EMPRNO`/`Employer_Number`:
 
+**Bug found and fixed 2026-09-14:** first version of this SQL included
+a `CREATE VIEW "GLD_AE_Employer_Enrollment_YoY" AS` wrapper, breaking
+from the bare-`SELECT` pattern every other SQL in this doc follows.
+Datasphere's SQL View editor is just the query definition for a view
+object that already exists in the Data Builder — it doesn't take DDL.
+Failed with `Mismatched <Identifier>, expecting '(', 'select'` plus
+downstream "model is empty"/"needs a visible measure" errors (both
+just consequences of the parse failure). **Fix: removed the wrapper
+line** — corrected version below is the one to paste in.
+
 ```sql
-CREATE VIEW "GLD_AE_Employer_Enrollment_YoY" AS
 SELECT
     g."Employer_Number"          AS "Employer_Number",
     g."Employer_Name"            AS "Employer_Name",
