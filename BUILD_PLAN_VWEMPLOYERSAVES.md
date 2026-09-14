@@ -1358,25 +1358,33 @@ same time — every other row-kind leaves one or the other blank.
    document the new row-kind (same pattern as the other 3 operational
    row-kinds added 2026-09-13).
 
-### Per-employer 2026-vs-2027 drill-down — spec only, not yet built
+### Per-employer 2026-vs-2027 drill-down — spec finalized 2026-09-14, not yet built
 
 Blair confirmed the employer-selector **Input Control lives outside
-the custom widget** and filters a **native SAC Table/Chart** — not
+the custom widget** and filters a **native SAC Table** — not
 custom-widget code — via the same Linked Analysis mechanism already
 used elsewhere on this Story. This mirrors the Table+Export download
 decision (native component, sidesteps the confirmed View-mode click-
 delivery bug entirely) rather than re-litigating it.
 
-**Proposed single-Table design** (not yet confirmed with Blair — flag
-before building): one native Table, one wide employer-grain model, both
-years' fields as separate columns on the same row, **default-sorted to
-double as the "constructive default state"** Blair asked for (largest
-`Eligible_Band` first, non-completed status first) when no employer is
-selected. Selecting one employer via the Input Control narrows the same
-Table to that employer's single row, showing 2026 and 2027 side by
-side — no second widget or view-swapping needed. This is a design
-proposal, not a built thing; confirm before spending SAC build time on
-it.
+**Single-Table design — confirmed by Blair, 2026-09-14.** One native
+Table, one wide employer-grain model, both years' fields as separate
+columns on the same row, **default-sorted to double as the
+"constructive default state"** (largest `Eligible_Band` first,
+non-completed status first) when no employer is selected. Selecting one
+employer via the Input Control narrows the same Table to that
+employer's single row, showing 2026 and 2027 side by side — no second
+widget or view-swapping needed.
+
+**Sort wrinkle found while finalizing this:** SAC Tables sort text
+columns alphabetically by default, and `"20+"` doesn't alphabetize
+ahead of `"10-19"`/`"3-9"` — a plain sort on `Eligible_Band` would NOT
+put the largest band first. **Fix: two integer sort-helper columns**
+(`Band_Sort_Order`, `Status_Sort_Order`) added to the view specifically
+so the Table's default multi-column sort is numeric and reliable,
+instead of depending on fragile custom-sort configuration in the SAC
+UI. Hide both columns in the Table's column layout — they exist only to
+drive the sort.
 
 **New view needed — `GLD_AE_Employer_Enrollment_YoY`** (name not yet
 confirmed), joining Gold (2027) to Matt Christensen's `ZVHCM_AE_1_26Q`
@@ -1401,7 +1409,25 @@ SELECT
             ELSE 'Unknown'
         END, 'Unknown'
     )                             AS "Eligible_Band",
+    -- Sort-helper, not for display — drives the Table's default sort so
+    -- "20+" genuinely sorts first (see "Sort wrinkle" note above).
+    CASE
+        WHEN eb."EligibleCount" >= 20 THEN 1
+        WHEN eb."EligibleCount" >= 10 THEN 2
+        WHEN eb."EligibleCount" >= 3  THEN 3
+        WHEN eb."EligibleCount" IS NOT NULL THEN 4
+        ELSE 5
+    END                           AS "Band_Sort_Order",
     g."Enrollment_Status"        AS "Status_2027",
+    -- Sort-helper, not for display — non-completed statuses first.
+    CASE g."Enrollment_Status"
+        WHEN 'Not Started'      THEN 1
+        WHEN 'In Progress'      THEN 2
+        WHEN 'Needs Follow-up'  THEN 3
+        WHEN 'Abandoned'        THEN 4
+        WHEN 'Success'          THEN 5
+        ELSE 6
+    END                           AS "Status_Sort_Order",
     g."Contribution_Set"         AS "Contribution_Set_2027",
     g."Health_Plan_Bundle"       AS "Health_Plan_Bundle_2027",
     g."HSA_Single"               AS "HSA_Single_2027",
@@ -1429,7 +1455,32 @@ LEFT JOIN "ZVHCM_AE_1_26Q" y26 ON y26."EMPRNO" = g."Employer_Number"
 `Status_2027` (`Success`/`Abandoned`/etc.) into one common status — this
 is the same open question already flagged to Ahmed above. The view
 passes both through as-is, labeled by year, rather than guessing at a
-mapping.
+mapping. (`Status_Sort_Order` above only orders the 2027 side, which is
+the one with a known, confirmed vocabulary.)
+
+### Table configuration spec (for building in SAC)
+
+1. Build `AM_EMPLOYER_ENROLLMENT_YOY` — same recipe already proven on
+   `AM_EMPLOYER_ENROLLMENT_DETAIL`: set `GLD_AE_Employer_Enrollment_YoY`'s
+   Semantic Usage to **Fact**, mark the `_2026`/`_2027` HSA and count
+   fields as Measures, then build the Analytic Model on top.
+2. New native Table on this model, sitting in the reserved space next
+   to (or below) the Operational widget.
+3. **Default sort:** `Band_Sort_Order` ascending, then
+   `Status_Sort_Order` ascending, then `Employer_Name` ascending — gives
+   the largest, least-complete employers first with no filter applied.
+4. **Columns shown:** `Employer_Name`, `Synod_Region`, `Eligible_Band`,
+   `Status_2027`, `Status_2026`, `Contribution_Set_2027`,
+   `Contribution_Set_2026`, the four `HSA_*_2027`/`HSA_*_2026` pairs,
+   `Employee_Count_2027`/`Employee_Count_2026`. **Hide**
+   `Band_Sort_Order`/`Status_Sort_Order` (sort-only) and
+   `Employer_Number`/`Eligible_Count_2027` (available but not
+   headline-worthy — include only if useful once you see it live).
+5. **Input Control:** bind to `Employer_Name` (or `Employer_Number` if
+   names collide — not yet checked), `Tools → Link Dimensions` against
+   this new model the same way it was done for the Table+Export Table.
+   No selection = full sorted list (the "constructive default state");
+   one employer selected = single row, both years' data side by side.
 
 **Flagged, unconfirmed:**
 - `ZVHCM_AE_1_26Q`'s HSA/`EECOUNT` numeric field types were never
@@ -1445,8 +1496,9 @@ mapping.
   `vEmployerSaves`).
 - `AM_EMPLOYER_ENROLLMENT_YOY` (or whatever this model gets named), the
   native Table, and the Input Control itself are all **not yet built**
-  — this section is a handoff spec, not a completed step, same caveat
-  as the original Datasphere View Spec at the top of this doc.
+  — this whole section is a handoff spec, same caveat as the original
+  Datasphere View Spec at the top of this doc. Design is confirmed;
+  execution isn't started.
 
 **Not yet started:** cataloguing `GLD_AE_Employer_Enrollment_YoY` and
 its Analytic Model once built — add to the "Last step" list above.
