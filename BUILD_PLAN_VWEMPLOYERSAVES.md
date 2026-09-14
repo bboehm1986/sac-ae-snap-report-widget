@@ -1861,17 +1861,21 @@ real Status/Synod block, the Status × Band block covering the same
 employers grouped differently, plus whatever the Multiple-Attempts/
 Stalled contribution added) explains the ~3x multiplier cleanly.
 
-**Fix:** added the same skip-guards Operational's parser already had —
-`Multiple Attempts`, `Recently Completed`, `Stalled *`, and the
-Status × Band combination (detected the same way as Operational: both
-`status` and `subType` populated, `subType` one of the 5 band values) —
-right before the generic fallthrough branch. Added 9 new mock rows
-covering all 4 contaminating row-kinds as a permanent regression test:
-`totalSetUp` must stay at the 143 baseline from the existing mock rows
-even with these present. **Verified in the Browser pane: `Total Set
-Up` = 143 (exact baseline, confirming the fix), no console errors.**
-Pushed `sac-ae-snap-report-widget` v1.0.16
-(`sha384-BYDxtcAyWYhOdue7Uxuua73MHu/FiPSdqQL6SKgAXCQi1iScBaZWUnXbviTZpkvv`).
+**Fix, simplified after first pass:** first attempt named each
+row-kind explicitly (`Multiple Attempts`, `Recently Completed`,
+`Stalled *`, the Status × Band combination). Simplified to a single
+blanket `if (subType) return;` right before the generic fallthrough —
+this widget doesn't render *any* subType-carrying row-kind, so one
+catch-all covers every current one and any future one added for
+another widget this one is never told about, matching the defensive
+pattern Operational's own parser already uses for the same reason.
+Added 9 new mock rows covering all 4 contaminating row-kinds as a
+permanent regression test: `totalSetUp` must stay at the 143 baseline
+from the existing mock rows even with these present. **Verified in the
+Browser pane: `Total Set Up` = 143 (exact baseline), HSA/YoY panels
+unaffected, no console errors.** Pushed `sac-ae-snap-report-widget`
+v1.0.16
+(`sha384-Bux96FRvdWPDbc8WITVxbx6MiFFhIA2r26aLimAUi+k9XozQDahI2QfznthS75Ga`).
 
 **Not an Ahmed/pipeline issue after all** — no escalation needed for
 this one. **Still needs:** re-registering the widget in SAC to pick up

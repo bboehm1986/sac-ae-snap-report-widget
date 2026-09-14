@@ -723,19 +723,20 @@
                 // Bug found and fixed 2026-09-14 — this widget was never
                 // updated when the Operational-only row-kinds were added to
                 // the SHARED cube (Multiple Attempts, Stalled buckets,
-                // Recently Completed, Status x Eligible Band). Without these
-                // guards, every one of those rows fell through into the
+                // Recently Completed, Status x Eligible Band). Without a
+                // guard, every one of those rows fell through into the
                 // generic branch below and got counted again into
                 // totalSetUp/completed/open — inflating every KPI tile by
                 // roughly 3x on live data (confirmed: Gold's own row count
                 // was correct, ~4,951, matching the source system; the
                 // widget's own parsing was the bug, not the data). This
-                // widget doesn't render any of these row-kinds, so they're
-                // just skipped outright rather than parsed like Operational
-                // does.
-                if (subType === "Multiple Attempts" || subType === "Recently Completed") return;
-                if (subType && subType.indexOf("Stalled ") === 0) return;
-                if (status && subType && ["20+", "10-19", "3-9", "Under 3", "Unknown"].includes(subType)) return;
+                // widget doesn't render any subType-carrying row-kind at
+                // all, so a single blanket skip covers every one of them —
+                // current ones and any future one added for another widget
+                // that this one was never told about — rather than naming
+                // each one individually and risking the same bug recurring
+                // the next time the shared cube grows a new row-kind.
+                if (subType) return;
 
                 const bucket = this._statusBucket(status);
 
