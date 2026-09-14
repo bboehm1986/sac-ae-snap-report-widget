@@ -1404,27 +1404,11 @@ line** — corrected version below is the one to paste in.
 
 ```sql
 SELECT
-    -- Every plain pass-through column below is wrapped in a no-op
-    -- COALESCE(col, col) -- added 2026-09-14. Confirmed via the Model
-    -- Properties Technical Name popup: a straight passthrough column
-    -- inherits its ORIGINAL source column's persisted Business Name in
-    -- Datasphere, silently ignoring this view's own "AS" rename --
-    -- only a genuinely computed column (like Eligible_Band below) gets
-    -- a fresh Business Name matching the SQL alias. Concretely, this
-    -- view's plain `y26."CONTRIBUTIONSET" AS "Contribution_Set_2026"`
-    -- was displaying as "Comment" (ZVHCM_AE_1_26Q's own leftover
-    -- Business Name for that field) and `g."Contribution_Set" AS
-    -- "Contribution_Set_2027"` was displaying as "CONTRIBUTIONSET"
-    -- (Gold's own inherited Business Name) -- both fully functional,
-    -- fully distinct columns, just dangerously mislabeled in the
-    -- Builder UI (picking the wrong one silently swaps 2026/2027 data).
-    -- The COALESCE wrapper forces Datasphere to treat each as an
-    -- expression, giving it a fresh Business Name from this alias.
-    COALESCE(g."Employer_Number", g."Employer_Number")     AS "Employer_Number",
-    COALESCE(g."Employer_Name", g."Employer_Name")         AS "Employer_Name",
-    COALESCE(g."Synod_Region", g."Synod_Region")           AS "Synod_Region",
-    COALESCE(g."Employee_Count", g."Employee_Count")       AS "Employee_Count_2027",
-    COALESCE(eb."EligibleCount", eb."EligibleCount")       AS "Eligible_Count_2027",
+    g."Employer_Number"          AS "Employer_Number",
+    g."Employer_Name"            AS "Employer_Name",
+    g."Synod_Region"             AS "Synod_Region",
+    g."Employee_Count"           AS "Employee_Count_2027",
+    eb."EligibleCount"           AS "Eligible_Count_2027",
     COALESCE(
         CASE
             WHEN eb."EligibleCount" >= 20 THEN '20+'
@@ -1443,7 +1427,7 @@ SELECT
         WHEN eb."EligibleCount" IS NOT NULL THEN 4
         ELSE 5
     END                           AS "Band_Sort_Order",
-    COALESCE(g."Enrollment_Status", g."Enrollment_Status") AS "Status_2027",
+    g."Enrollment_Status"        AS "Status_2027",
     -- Sort-helper, not for display — non-completed statuses first.
     CASE g."Enrollment_Status"
         WHEN 'Not Started'      THEN 1
@@ -1453,25 +1437,20 @@ SELECT
         WHEN 'Success'          THEN 5
         ELSE 6
     END                           AS "Status_Sort_Order",
-    COALESCE(g."Contribution_Set", g."Contribution_Set")           AS "Contribution_Set_2027",
-    COALESCE(g."Health_Plan_Bundle", g."Health_Plan_Bundle")       AS "Health_Plan_Bundle_2027",
-    COALESCE(g."HSA_Single", g."HSA_Single")                       AS "HSA_Single_2027",
-    COALESCE(g."HSA_Family", g."HSA_Family")                       AS "HSA_Family_2027",
-    COALESCE(g."HSA_One_Time_Single", g."HSA_One_Time_Single")     AS "HSA_One_Time_Single_2027",
-    COALESCE(g."HSA_One_Time_Family", g."HSA_One_Time_Family")     AS "HSA_One_Time_Family_2027",
-    COALESCE(y26."STATUS", y26."STATUS")                 AS "Status_2026",
-    COALESCE(y26."CONTRIBUTIONSET", y26."CONTRIBUTIONSET") AS "Contribution_Set_2026",
-    -- CAST added 2026-09-14 -- confirmed via Model Properties that all 5
-    -- numeric fields on ZVHCM_AE_1_26Q come through as String(15), same
-    -- issue HSA_One_Time_Single/Family originally had in Gold. CAST is
-    -- itself an expression, so these 5 already get correct Business
-    -- Names without needing the COALESCE wrapper too.
+    g."Contribution_Set"         AS "Contribution_Set_2027",
+    g."Health_Plan_Bundle"       AS "Health_Plan_Bundle_2027",
+    g."HSA_Single"               AS "HSA_Single_2027",
+    g."HSA_Family"               AS "HSA_Family_2027",
+    g."HSA_One_Time_Single"      AS "HSA_One_Time_Single_2027",
+    g."HSA_One_Time_Family"      AS "HSA_One_Time_Family_2027",
+    y26."STATUS"                 AS "Status_2026",
+    y26."CONTRIBUTIONSET"        AS "Contribution_Set_2026",
     CAST(y26."HSA_HRA_SINGLE"   AS DECIMAL(18,2)) AS "HSA_Single_2026",
     CAST(y26."HSA_HRA_FAMILY"   AS DECIMAL(18,2)) AS "HSA_Family_2026",
     CAST(y26."HSAONETIMESINGLE" AS DECIMAL(18,2)) AS "HSA_One_Time_Single_2026",
     CAST(y26."HSAONETIMEFAMILY" AS DECIMAL(18,2)) AS "HSA_One_Time_Family_2026",
     CAST(y26."EECOUNT"          AS BIGINT)        AS "Employee_Count_2026",
-    COALESCE(y26."ACTDATE", y26."ACTDATE")        AS "Action_Date_2026"
+    y26."ACTDATE"                AS "Action_Date_2026"
 FROM "GLD_AE_Employer_Enrollment" g
 LEFT JOIN (
     SELECT "EMPRNO", "EligibleCount"
@@ -1505,6 +1484,70 @@ LEFT JOIN (
 `ZVHCM_AE_1_26Q` — see the two bug notes above). **Not yet done:** the
 Analytic Model (`AM_EMPLOYER_ENROLLMENT_YOY`), the native Table, and
 the Input Control — see "Table configuration spec" below.
+
+**Business Name mislabeling — found and worked around 2026-09-14, NOT
+fixable in SQL.** Once `AM_EMPLOYER_ENROLLMENT_YOY`'s Model Properties
+were opened, most Attributes/Measures were showing the wrong display
+name — not my `AS` aliases, but names inherited from further up the
+lineage (Gold's own column, or in several cases `vEmployerSaves`'/
+`ZVHCM_AE_1_26Q`'s own raw field name, one or two hops further back
+than expected). Confirmed via Technical Name popups that this is
+**purely a display/labeling issue — every column is present, correctly
+typed, and fully distinct** (e.g. `Contribution_Set_2027` and
+`Contribution_Set_2026` are two real, separate columns, just both
+mislabeled — one as `CONTRIBUTIONSET`, the other as the SAP-leftover
+default `Comment`).
+
+**First fix attempt failed and was reverted:** wrapped every plain
+pass-through column in a no-op `COALESCE(col, col)`, on the theory that
+Datasphere's Business Name inheritance follows column *syntax* (bare
+reference vs. expression) — disproven. It follows *data lineage*
+instead: `COALESCE(x, x)` still traces back to the same ultimate source
+column, so the mislabeling wasn't fixed, and in a few cases the display
+name changed to an *even earlier* ancestor than before. The `Eligible_
+Band`/`Band_Sort_Order`/`Status_Sort_Order` columns display correctly
+not because they're "expressions" in general, but because their `CASE`
+branches return literal constants with no single traceable source
+column at all — there's no ancestor to inherit from. Reverted the
+`COALESCE` wrapping (harmless but pointless) back to plain columns.
+
+**Actual fix: manually override the Business Name on each affected
+column**, via the pencil/edit icon next to "Attributes"/"Measures" in
+Model Properties — there is no SQL-level way around this.
+
+| Currently shows as | Rename to |
+|---|---|
+| `EmployerNumber` | `Employer_Number` |
+| `EmployerName` | `Employer_Name` |
+| `Enrollment_Status` | `Status_2027` |
+| `CONTRIBUTIONSET` | `Contribution_Set_2027` |
+| `CUST_BUND_NAME` | `Health_Plan_Bundle_2027` |
+| `STATUS` | `Status_2026` |
+| `Comment` | `Contribution_Set_2026` |
+| `Actdate` | `Action_Date_2026` |
+| `numberOfEmployees` | `Employee_Count_2027` |
+| `EligibleCount` | `Eligible_Count_2027` |
+| `HSA_HRA_SINGLE` (1st) | `HSA_Single_2027` |
+| `HSA_HRA_FAMILY` (1st) | `HSA_Family_2027` |
+| `HSAONETIMESINGLE` (1st) | `HSA_One_Time_Single_2027` |
+| `HSAONETIMEFAMILY` (1st) | `HSA_One_Time_Family_2027` |
+| `HSA_HRA_SINGLE` (2nd) | `HSA_Single_2026` |
+| `HSA_HRA_FAMILY` (2nd) | `HSA_Family_2026` |
+| `HSAONETIMESINGLE` (2nd) | `HSA_One_Time_Single_2026` |
+| `HSAONETIMEFAMILY` (2nd) | `HSA_One_Time_Family_2026` |
+| `EECOUNT` | `Employee_Count_2026` |
+
+`Synod_Region`, `Eligible_Band`, `Band_Sort_Order`, `Status_Sort_Order`
+already display correctly — leave those alone. The four Measures rows
+that appear as identical-looking duplicates (`HSA_HRA_SINGLE` etc., one
+pair per HSA type) need their Technical Name checked before renaming —
+don't rely on list position alone. **Not yet confirmed** whether this
+same mislabeling silently exists on Gold's own Model Properties too
+(e.g. `Contribution_Set` there might also display as `CONTRIBUTIONSET`)
+— never surfaced as a problem before because no prior binding needed to
+disambiguate it from a second, identically-sourced column the way this
+YoY view does. Worth a quick look if Gold's own dimension bindings ever
+seem confusing again.
 
 **Deliberately not attempted here:** reconciling `Status_2026` (Matt's
 `Undetermined`/`Completed EL`/`Completed OTP` vocabulary) against
