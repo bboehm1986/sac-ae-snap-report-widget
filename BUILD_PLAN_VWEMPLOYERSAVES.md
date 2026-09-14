@@ -1483,10 +1483,13 @@ LEFT JOIN (
 `CREATE VIEW` wrapper and casting the 5 `String(15)` numeric fields on
 `ZVHCM_AE_1_26Q` — see the two bug notes above). All 19 mislabeled
 Business Names manually renamed per the mapping above — **Attributes
-and Measures now display correctly.** **Not yet done:** creating the
-Analytic Model object itself (`AM_EMPLOYER_ENROLLMENT_YOY`), registering
-`sac-ae-drilldown-widget` in SAC, binding it, and the Input Control —
-see "Remaining build steps" below.
+and Measures now display correctly.** `AM_EMPLOYER_ENROLLMENT_YOY`
+had already been created before the renaming pass (so it was still
+showing the old inherited names); **deleted and recreated after the
+rename, now saved and deployed with correct Attribute/Measure names.**
+**Not yet done:** registering `sac-ae-drilldown-widget` in SAC, binding
+its `employerYoy` feed to this model, and the Input Control — see
+"Remaining build steps" below.
 
 **Business Name mislabeling — found and worked around 2026-09-14, NOT
 fixable in SQL.** Once `AM_EMPLOYER_ENROLLMENT_YOY`'s Model Properties
