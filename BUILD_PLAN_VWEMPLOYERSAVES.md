@@ -1517,29 +1517,64 @@ breaks the tie either (their shared `PROCDATE` is identical too) and
 this currently affects zero employers besides `42234` — see BR-3 in
 the `2026-employer-annual-elections.md` catalogue entry for full detail.
 
-### Table configuration spec (for building in SAC)
+### Pivoted from a native Table to a third custom widget — 2026-09-14
+
+Blair's call: a bare native SAC Table dropped next to the Executive/
+Operational widgets' glassmorphism styling would look bolted-on. New
+plan — a **third custom widget**, `sac-ae-drilldown-widget`
+("AE Employer Election Drill-Down"), styled with the exact same design
+system, filtered by the same external Input Control via the same
+Linked Analysis mechanism already working elsewhere on this Story
+(that's a different code path than the confirmed-broken internal
+click/change events — an external Input Control re-running the bound
+query and pushing fresh data through `onCustomWidgetAfterUpdate` is the
+standard, already-proven flow).
+
+**Two render states, chosen purely by row count** — no separate "mode"
+property needed:
+- **Many rows (no employer selected)** → a "needs attention" list,
+  sorted **client-side in JS** (largest `Eligible_Band`, least-complete
+  `Status_2027` first) — this is the "constructive default state"
+  Blair asked for. Capped at 20 rows with a "+N more" caption. Since
+  sorting happens in JS, `Band_Sort_Order`/`Status_Sort_Order` aren't
+  actually read by this widget (harmless to leave in the view/model
+  regardless — a native Table alternative would have needed them).
+- **Exactly one row (one employer selected)** → a clean 2026-vs-2027
+  side-by-side comparison card — Status, Contribution Set, Health Plan
+  Bundle (2027 only, "—" on 2026), the 4 HSA amounts, Employee Count.
+  `Status_2026` and `Status_2027` are shown side by side, unreconciled,
+  same as the view itself.
+
+**Built and verified in the Browser pane, 2026-09-14** — both mock
+states (multi-row list, single-row card) render correctly against the
+real design-system CSS, sort order confirmed correct (20+/Not Started
+ahead of 20+/In Progress, etc.), no console errors. `widget.json`,
+`icon.svg`, `preview.html` (with a toggle button to swap mock states,
+since real Input Control filtering can't be simulated standalone)
+all scaffolded, matching the sibling widgets' structure.
+
+**Not yet done:** creating and publishing the GitHub repo, registering
+the widget in SAC, and the model/Table-config steps below (still
+correct even with the native-Table plan replaced by a widget — the
+model and Input Control binding work the same either way, only the
+rendering surface changed).
+
+### Remaining build steps
 
 1. Build `AM_EMPLOYER_ENROLLMENT_YOY` — same recipe already proven on
    `AM_EMPLOYER_ENROLLMENT_DETAIL`: set `GLD_AE_Employer_Enrollment_YoY`'s
-   Semantic Usage to **Fact**, mark the `_2026`/`_2027` HSA and count
-   fields as Measures, then build the Analytic Model on top.
-2. New native Table on this model, sitting in the reserved space next
-   to (or below) the Operational widget.
-3. **Default sort:** `Band_Sort_Order` ascending, then
-   `Status_Sort_Order` ascending, then `Employer_Name` ascending — gives
-   the largest, least-complete employers first with no filter applied.
-4. **Columns shown:** `Employer_Name`, `Synod_Region`, `Eligible_Band`,
-   `Status_2027`, `Status_2026`, `Contribution_Set_2027`,
-   `Contribution_Set_2026`, the four `HSA_*_2027`/`HSA_*_2026` pairs,
-   `Employee_Count_2027`/`Employee_Count_2026`. **Hide**
-   `Band_Sort_Order`/`Status_Sort_Order` (sort-only) and
-   `Employer_Number`/`Eligible_Count_2027` (available but not
-   headline-worthy — include only if useful once you see it live).
-5. **Input Control:** bind to `Employer_Name` (or `Employer_Number` if
+   Semantic Usage to **Fact**, mark the 11 `_2026`/`_2027` HSA/count
+   fields as Measures (confirmed convertible after the `CAST` fix
+   above), then build the Analytic Model on top.
+2. Register `sac-ae-drilldown-widget` in SAC's Custom Widgets list
+   (once published), bind its `employerYoy` feed to
+   `AM_EMPLOYER_ENROLLMENT_YOY`, place it in the reserved space next to
+   the Operational widget.
+3. **Input Control:** bind to `Employer_Name` (or `Employer_Number` if
    names collide — not yet checked), `Tools → Link Dimensions` against
-   this new model the same way it was done for the Table+Export Table.
-   No selection = full sorted list (the "constructive default state");
-   one employer selected = single row, both years' data side by side.
+   `AM_EMPLOYER_ENROLLMENT_YOY`, same as done for the Table+Export
+   Table earlier. No selection = needs-attention list; one employer
+   selected = single row, both years side by side.
 
 **Resolved 2026-09-14:** whether `EMPRNO` is genuinely one-row-per-
 employer on `ZVHCM_AE_1_26Q` — **confirmed effectively yes** (only one
