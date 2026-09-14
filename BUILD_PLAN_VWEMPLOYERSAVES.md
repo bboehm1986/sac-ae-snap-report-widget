@@ -1481,9 +1481,12 @@ LEFT JOIN (
 
 **Status: view saved and deployed, 2026-09-14** (after fixing the
 `CREATE VIEW` wrapper and casting the 5 `String(15)` numeric fields on
-`ZVHCM_AE_1_26Q` — see the two bug notes above). **Not yet done:** the
-Analytic Model (`AM_EMPLOYER_ENROLLMENT_YOY`), the native Table, and
-the Input Control — see "Table configuration spec" below.
+`ZVHCM_AE_1_26Q` — see the two bug notes above). All 19 mislabeled
+Business Names manually renamed per the mapping above — **Attributes
+and Measures now display correctly.** **Not yet done:** creating the
+Analytic Model object itself (`AM_EMPLOYER_ENROLLMENT_YOY`), registering
+`sac-ae-drilldown-widget` in SAC, binding it, and the Input Control —
+see "Remaining build steps" below.
 
 **Business Name mislabeling — found and worked around 2026-09-14, NOT
 fixable in SQL.** Once `AM_EMPLOYER_ENROLLMENT_YOY`'s Model Properties
