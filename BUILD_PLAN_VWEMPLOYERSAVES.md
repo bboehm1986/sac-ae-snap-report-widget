@@ -1828,26 +1828,52 @@ production bug — depends on whether this Datasphere space points at
 real or synthetic data, which isn't visible from here.
 
 **Issue 2 — every KPI tile inflated by roughly 3x versus the source
-system**, per Blair (`Total Set Up 14,884` / `Completed 1,834` /
-`Non-Completed 8,068` on live data, all reportedly ~3x too high).
-**Working theory, not yet confirmed:** Gold's own dedup only collapses
-multiple *attempts on the same `RequestId`*
-(`ROW_NUMBER() OVER (PARTITION BY "RequestId" ORDER BY "AttemptedOn"
-DESC)`) — it does nothing if the same real employer has been given
-multiple separate `RequestId`s, which is exactly what repeated runs of
-whatever produced Issue 1 would cause. Nothing in the current pipeline
-dedupes by `Employer_Number` itself. A uniform ~3x inflation across
-every tile at once (rather than one panel being wrong) fits this
-theory better than a single isolated bug. **Diagnostic query written,
-not yet run:**
-```sql
-SELECT "Employer_Number", COUNT(*) AS "Row_Count"
-FROM "GLD_AE_Employer_Enrollment"
-GROUP BY "Employer_Number"
-HAVING COUNT(*) > 1
-ORDER BY "Row_Count" DESC
-```
-If this returns many employers with `Row_Count > 1`, it confirms
-Gold's fundamental one-row-per-employer grain assumption has been
-wrong — which would affect every widget built on this data, not just
-these tiles. **Not yet run or confirmed either way.**
+system, RESOLVED 2026-09-14 — root cause was a widget bug, not a data
+problem.** Blair reported `Total Set Up 14,884` / `Completed 1,834` /
+`Non-Completed 8,068` on live data, all ~3x too high.
+
+**First theory (Gold-level duplicate `RequestId`s per employer) —
+tested and disproven.** `SELECT "Employer_Number", COUNT(*) ... GROUP
+BY "Employer_Number" HAVING COUNT(*) > 1` found only **17 employers**
+with more than one row (max 7) — nowhere near enough to explain a
+uniform 3x inflation across ~14,884 rows.
+
+**Second theory (orphan/synthetic employer numbers with no
+`vDimEmployer` match) — also tested and disproven, but revealed the
+real answer.** `SELECT CASE WHEN "Employer_Name" IS NULL THEN 'No
+Match...' ELSE 'Matched' END, COUNT(*) ... FROM
+"GLD_AE_Employer_Enrollment" GROUP BY ...` returned **4,948 matched +
+3 unmatched = 4,951 total rows** — meaning **Gold's own row count is
+correct** (~4,951, a sane source-system-sized number), not 14,884 at
+all. The inflation was never in the data.
+
+**Root cause, found by re-reading this widget's own
+`_parseEmployerStatus()`:** this widget was never updated when the
+Operational-only row-kinds (Multiple Attempts, Stalled buckets,
+Recently Completed, Status × Eligible Band) were added to the
+**shared** cube on 2026-09-13/14. Since all three widgets bind to the
+same `AM_EMPLOYER_ENROLLMENT_SUMMARY` model, those rows arrive in this
+widget's data too — and with no guard to recognize and skip them, they
+fell through into the generic "plain status" branch and got counted
+*again* into `totalSetUp`/`completed`/`open`, on top of the correct
+Status/Synod block. Roughly 3 overlapping "full populations" (the
+real Status/Synod block, the Status × Band block covering the same
+employers grouped differently, plus whatever the Multiple-Attempts/
+Stalled contribution added) explains the ~3x multiplier cleanly.
+
+**Fix:** added the same skip-guards Operational's parser already had —
+`Multiple Attempts`, `Recently Completed`, `Stalled *`, and the
+Status × Band combination (detected the same way as Operational: both
+`status` and `subType` populated, `subType` one of the 5 band values) —
+right before the generic fallthrough branch. Added 9 new mock rows
+covering all 4 contaminating row-kinds as a permanent regression test:
+`totalSetUp` must stay at the 143 baseline from the existing mock rows
+even with these present. **Verified in the Browser pane: `Total Set
+Up` = 143 (exact baseline, confirming the fix), no console errors.**
+Pushed `sac-ae-snap-report-widget` v1.0.16
+(`sha384-BYDxtcAyWYhOdue7Uxuua73MHu/FiPSdqQL6SKgAXCQi1iScBaZWUnXbviTZpkvv`).
+
+**Not an Ahmed/pipeline issue after all** — no escalation needed for
+this one. **Still needs:** re-registering the widget in SAC to pick up
+v1.0.16 on live data, and confirming the tiles show sane numbers once
+that's done.
