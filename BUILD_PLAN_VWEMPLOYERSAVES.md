@@ -408,13 +408,91 @@ Text) → Linked Analysis via Link Dimensions, all working end to end.
 
 ## Not in this build — pending, added later
 
-- **"Defaulted"** status — definition not yet confirmed. Not part of Gold
-  or the aggregate cube above; will be a field addition once answered.
+- **"Defaulted"** status — definition not yet confirmed via an exact
+  mapping, but **very likely identified 2026-09-14**: see "Status
+  vocabulary — likely major correction needed" below. Not part of Gold
+  or the aggregate cube above; will be a field addition once the mapping
+  is confirmed.
   Note: Member Enrollment's version of this same question turned out to
   hinge on a per-member "chosen for PSP" tag (see `ae-member-enrollment-
   report/BUILD_PLAN_FOR_AHMED.md`) — worth checking whether Employer
   Selection has an equivalent tag-based mechanism before assuming a
   simple date-comparison will do.
+
+## Status vocabulary — likely major correction needed, flagged 2026-09-14
+
+Blair shared a "former report" (screenshots, not yet a catalogued
+Datasphere object) showing **5 real statuses**: `Open`, `Completed EL`
+(Completed on EmployerLink), `Completed OTP`, `Default`, `Default
+Override` — a genuinely different vocabulary from Gold's current
+`Success`/`Abandoned`/`Not Started`/`In Progress`/`Needs Follow-up`
+(derived from `vEmployerSaves.ResultCode`, values `S`/`A`/`N`/`IP`/
+`F`/`E`/`W`/`I` with an `ELSE` catch-all — see the "Total Set Up ≈ Non-
+Completed" investigation directly above, which may well be a symptom of
+this same root problem).
+
+**Likely resolves two long-open questions at once:**
+1. `"Default"` is almost certainly the real definition of the
+   `"Defaulted"` status this doc has carried as unanswered since the
+   project started.
+2. `"Completed EL"`/`"Completed OTP"` is the **exact same terminology**
+   already seen on `"2026 Employer Annual Elections"`'s own `STATUS`
+   field (`Undetermined`/`Completed EL`/`Completed OTP`) — catalogued
+   weeks ago and treated at the time as an unrelated vocabulary
+   mismatch (see the YoY panel section above, "Still open — STATUS
+   vocabulary mismatch"). Seeing the identical terms again in this
+   former report suggests these may **not** be two coincidentally
+   similar vocabularies — the correct source for Gold's status might
+   never have been `vEmployerSaves.ResultCode` at all, and could belong
+   to the same lineage/table as that `STATUS` field instead.
+
+**Blocking questions asked of Blair, 2026-09-14, not yet answered:**
+1. What is the actual source of this former report — built from
+   `vEmployerSaves`/`ResultCode` too (just a more complete mapping than
+   the one currently guessed at), or a different table entirely?
+2. What determines `Default` vs. `Default Override` specifically — a
+   `ResultCode` value, a date comparison, or something else?
+
+**Not acted on yet — this could mean rebuilding Gold's entire status
+derivation**, so no SQL changes made until the mapping is confirmed.
+Screenshot reference (former report, not yet in Datasphere): a cross-tab
+by health-plan bundle x status (`Open`/`Completed EL`/`Completed OTP`/
+`Default`/`Default Override`), totals `Open: 1`, `Completed EL: 4,254`,
+`Completed OTP: 6`, `Default: 655`, `Default Override: 1` — likely a
+full/closed historical cycle used as a reference for what this vocabulary
+looks like at scale, not current live 2027 numbers.
+
+## New requirements from a former report — captured 2026-09-14, not yet built
+
+Blair also shared the following requirements, drawn from a former
+report's images/metrics to emulate this year. None of these are built
+yet; captured here so nothing is lost. Some may depend on the status-
+vocabulary question above being resolved first (particularly anything
+scoped to "Completed").
+
+1. **Employer Elections panel** — Elected health plan, Employer Name,
+   Address, Count of employees at employer (bonus: count of dependents).
+   Richer per-employer detail than the current download table; the
+   former report's own detail view showed `STATUS`, `Contribution Set`,
+   `Employer` (number), `Name`, `Street`, `Street 2`, `City`, `Region`,
+   `Postal Code`, `Country/Region Key`, `No of Employees` — most of
+   these already exist in `GLD_AE_Employer_Enrollment` or `vDimEmployer`
+   (Street/City/Region/Postal Code/Country would be new fields, not
+   currently pulled into Gold).
+2. **YoY comparison by Employer, Address, Count of Employees** (bonus:
+   Count of Dependents) — genuinely per-employer YoY, distinct from the
+   aggregate-bucket YoY already built (health-plan buckets, eligible
+   headcount). Not yet scoped how this would fold into the one-model-
+   per-widget architecture.
+3. **HSA view** — Employer Elections (with YoY comparison again) plus
+   HSA elections specifically. Sounds like a dedicated panel/page
+   combining #1 and #2's per-employer grain with HSA data, not just the
+   existing aggregate HSA bucket counts.
+4. **Timeline as a visual grid instead of a bar chart** — independent of
+   the status-vocabulary question, and already discussed earlier as an
+   idea Blair liked (heatmap-grid style, one cell per day). Worth
+   building once the dashboards aren't mid-rework from the status
+   change.
 - ~~**Health/HSA election-type breakdown** — needs a separate
   employer↔member join, not resolved by this source~~ — **corrected
   2026-09-10 by Blair: wrong assumption.** The employer itself elects a

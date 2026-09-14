@@ -440,7 +440,6 @@
                     <div class="titlewrap">
                         <h1>Snap Report</h1>
                         <span class="badge accent" id="dataBadge">Mock Data — Preview</span>
-                        <span class="badge warning">2 Open Items</span>
                     </div>
                     <div class="asof" id="asof"></div>
                 </div>
@@ -492,7 +491,7 @@
             this._shadowRoot = this.attachShadow({ mode: "open" });
             this._shadowRoot.appendChild(template.content.cloneNode(true));
 
-            this._props = { width: 900, height: 600, asOfLabel: "Live" };
+            this._props = { width: 900, height: 600, asOfLabel: "" };
             this._employerStatus = MOCK_EMPLOYER_STATUS; // now also carries Timeline + Election Type + YoY rows, see header comment
             this._usingMockData = true;
         }
@@ -778,8 +777,17 @@
             const status = this._parseEmployerStatus();
             const daily = status.daily; // now rides inside employerStatus — see _parseEmployerStatus()
 
-            root.getElementById("asof").textContent = "As of: " + (this._props.asOfLabel || "Live");
-            root.getElementById("dataBadge").textContent = this._usingMockData ? "Mock Data — Preview" : "Live";
+            // "Live"/"2 Open Items" language dropped 2026-09-14, per Blair —
+            // unhelpful on a leadership-facing dashboard. The badge now only
+            // ever warns about mock/preview data; it simply doesn't render
+            // once real data is bound, rather than announcing "Live".
+            const asOfLabel = this._props.asOfLabel || "";
+            const asOfEl = root.getElementById("asof");
+            asOfEl.textContent = asOfLabel ? "As of: " + asOfLabel : "";
+            asOfEl.hidden = !asOfLabel;
+            const dataBadgeEl = root.getElementById("dataBadge");
+            dataBadgeEl.textContent = "Mock Data — Preview";
+            dataBadgeEl.hidden = !this._usingMockData;
 
             // Employer Selection tiles — percentages formatted via
             // _formatPct() (2026-09-12) so a small-but-real rate like 17/4991
