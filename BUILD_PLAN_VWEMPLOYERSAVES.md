@@ -1797,6 +1797,57 @@ written; the `SUBSTR`-based fallback wasn't needed.
 - Re-registering the widget in SAC's Custom Widgets list (needed
   before the Story shows v1.0.15's grouped-bar Timeline, plus this
   cube change).
-- Investigating the separate `900`-on-9/14 anomaly Blair spotted.
 - A decision on whether Operational's Timeline should get this same
   YoY treatment (not asked yet).
+
+## Two live data-quality issues found, both outstanding — 2026-09-14
+
+Found while investigating the Timeline, not resolved — flagged here
+rather than guessed at or silently worked around in SQL. Both likely
+point at the same underlying pipeline problem; escalate to Ahmed
+Sheikh (confirmed owner of `vEmployerSaves`) once confirmed, possibly
+bundled with the existing status-vocabulary question list.
+
+**Issue 1 — 900 "completions" all stamped the exact same second.**
+`SELECT * FROM "GLD_AE_Employer_Enrollment" WHERE "Enrollment_Status" =
+'Success' AND CAST("Completed_Date" AS DATE) = CURRENT_DATE` returns
+900 rows, confirmed via `COUNT(*)`/`COUNT(DISTINCT "Employer_Number")`
+both `= 900` (not a Gold-level duplication issue). But cross-checking
+`vEmployerSaves` directly: these 900 rows have `CreatedDate` values
+spread across several days (e.g. `Sep 10, 2026` in small batches), yet
+`SubmittedOn` **and** `AttemptedOn` are identically
+`Sep 14, 2026, 18:26:42` — to the second — across every one of them.
+No independent group of real employers submits at the literal same
+second; this looks like a batch job bulk-marking pre-existing
+`Created`-only records as `'S'` with `NOW()`, all at once. Also
+suspicious on business-timing grounds alone: today is 2+ weeks before
+the 10/1 election window even opens, so 900 genuine completions today
+isn't plausible either way. **Not confirmed** whether this reflects a
+test/sandbox data-refresh process (expected noise) or a genuine
+production bug — depends on whether this Datasphere space points at
+real or synthetic data, which isn't visible from here.
+
+**Issue 2 — every KPI tile inflated by roughly 3x versus the source
+system**, per Blair (`Total Set Up 14,884` / `Completed 1,834` /
+`Non-Completed 8,068` on live data, all reportedly ~3x too high).
+**Working theory, not yet confirmed:** Gold's own dedup only collapses
+multiple *attempts on the same `RequestId`*
+(`ROW_NUMBER() OVER (PARTITION BY "RequestId" ORDER BY "AttemptedOn"
+DESC)`) — it does nothing if the same real employer has been given
+multiple separate `RequestId`s, which is exactly what repeated runs of
+whatever produced Issue 1 would cause. Nothing in the current pipeline
+dedupes by `Employer_Number` itself. A uniform ~3x inflation across
+every tile at once (rather than one panel being wrong) fits this
+theory better than a single isolated bug. **Diagnostic query written,
+not yet run:**
+```sql
+SELECT "Employer_Number", COUNT(*) AS "Row_Count"
+FROM "GLD_AE_Employer_Enrollment"
+GROUP BY "Employer_Number"
+HAVING COUNT(*) > 1
+ORDER BY "Row_Count" DESC
+```
+If this returns many employers with `Row_Count > 1`, it confirms
+Gold's fundamental one-row-per-employer grain assumption has been
+wrong — which would affect every widget built on this data, not just
+these tiles. **Not yet run or confirmed either way.**
