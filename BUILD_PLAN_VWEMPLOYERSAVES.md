@@ -1502,3 +1502,40 @@ the one with a known, confirmed vocabulary.)
 
 **Not yet started:** cataloguing `GLD_AE_Employer_Enrollment_YoY` and
 its Analytic Model once built — add to the "Last step" list above.
+
+## Timeline replaced with a heatmap grid — done 2026-09-14
+
+Picked up while the status-vocabulary question sits with Yong — purely
+presentational, no dependency on that answer. Blair liked this idea
+earlier ("a visual grid may be helpful instead of bar chart"); built
+and verified against mock data on both widgets that still render a
+Timeline (Operational and the original AE Snap Report — Executive
+never got one, see "Dashboard split" above).
+
+**Design:** one `.grid-cell` div per day (was one SVG `<rect>` bar),
+background color on a 5-level intensity scale (0/≤25%/≤50%/≤75%/>75%
+of the window's max, same idea as a GitHub contribution graph), count
+and date still printed on the cell so no information is lost versus
+the bars — just read faster as a grid. Peak day keeps a highlighted
+outline (was a green-filled bar). `_renderTimeline()` rewritten to
+build this HTML directly rather than SVG; same call site
+(`root.getElementById("timelineChart")`), so nothing else in either
+widget needed to change. Operational got the change first, then
+copied verbatim into the original widget — identical implementation on
+both, per the established design-system-reuse pattern.
+
+**Verified in the Browser pane against mock data, both widgets:** 14
+cells rendered (matching the 14-day mock window), color levels
+matched each day's relative count correctly, peak day correctly
+identified the true max (`10/14: 41`) rather than a visually-larger-
+looking but non-max bar, no console errors, no regressions to any
+other panel. Pushed:
+- `sac-ae-operational-widget` v1.0.3
+  (`sha384-h583KYHkIDsrj5U8ckOZYeoDZVYrZi2Tcn4UPRljt1so3DAg2nGa/p8QlH+DKafD`)
+- `sac-ae-snap-report-widget` v1.0.14
+  (`sha384-f2JJ4sgwyLykgOtpyrRmIfiNi9VvmujfMQvuZQySpWCbczK0lGGt/J5l5TizLH1N`)
+
+**Not done:** re-registering the widget definition in SAC's Custom
+Widgets list (delete-and-recreate, per the confirmed refresh
+limitation above) — needed before either Story actually shows this
+change.
