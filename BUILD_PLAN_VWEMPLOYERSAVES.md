@@ -1788,11 +1788,15 @@ correct, no console errors, no regressions to any other panel. Pushed
 `sac-ae-snap-report-widget` v1.0.15
 (`sha384-OybSYmuunJGkSrK9SnmsKzK/NfJlVUq5dr4jVaQtarqdHhf+M21tzgFqYZB110s+`).
 
+**SQL deployed and confirmed live, 2026-09-14** — both the new 12th
+block and the `Enrollment_Year: NULL → 2027` change to the existing
+block saved successfully. `TO_DATE("ACTDATE", 'YYYYMMDD')` worked as
+written; the `SUBSTR`-based fallback wasn't needed.
+
 **Not done:**
-- Deploying the new 12th cube block and the `Enrollment_Year: NULL →
-  2027` change to the existing block (SQL above, written but not yet
-  pasted into Datasphere).
+- Re-registering the widget in SAC's Custom Widgets list (needed
+  before the Story shows v1.0.15's grouped-bar Timeline, plus this
+  cube change).
 - Investigating the separate `900`-on-9/14 anomaly Blair spotted.
-- Re-registering the widget in SAC's Custom Widgets list.
 - A decision on whether Operational's Timeline should get this same
   YoY treatment (not asked yet).
