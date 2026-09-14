@@ -1761,5 +1761,38 @@ the Snap Report widget only; the heatmap-grid work above stays as-is
 everywhere else (Operational's Timeline, and every other panel on both
 widgets). Chart needs to align the two years by **calendar month/day
 only, year stripped** (2026-10-01 and 2027-10-01 both bucket under
-"10/1") since the two years' absolute dates don't match. Not yet built
-— next step.
+"10/1") since the two years' absolute dates don't match.
+
+**Built and verified in the Browser pane, 2026-09-14.** `main.js`
+changes:
+- `_parseEmployerStatus()`: `byDate` (single-year) replaced with
+  `byDateYear`, keyed by `"MM-DD"` (via new `_monthDayKey()` helper)
+  then `"2026"`/`"2027"`. Defaults to `"2027"` if `Enrollment_Year`
+  ever arrives blank (safety net for an older, un-redeployed cube).
+- Returned `daily` array now `{ mmdd, y2026, y2027 }` per day, sorted
+  chronologically (zero-padded `MM-DD` sorts correctly as plain
+  strings).
+- `_renderTimeline()` rewritten again — HTML/CSS grouped bars (two
+  `.tl-bar` divs per day, heights proportional to the shared max across
+  both years) instead of the heatmap grid, with a 2-color legend
+  (`--info` = 2026, `--accent` = 2027).
+- Mock data extended: existing 14 rows tagged `Year = "2027"` (were
+  blank), plus 14 new 2026-side mock rows using the prior calendar year
+  (`2025-10-xx`, matching the real `ACTDATE` evidence that a given plan
+  year's election window falls in the *previous* calendar year's
+  October).
+
+Verified: 14 day-groups rendered, values matched mock data exactly
+(`10/1: 2026=9, 2027=14`), bar heights proportional, title/legend
+correct, no console errors, no regressions to any other panel. Pushed
+`sac-ae-snap-report-widget` v1.0.15
+(`sha384-OybSYmuunJGkSrK9SnmsKzK/NfJlVUq5dr4jVaQtarqdHhf+M21tzgFqYZB110s+`).
+
+**Not done:**
+- Deploying the new 12th cube block and the `Enrollment_Year: NULL →
+  2027` change to the existing block (SQL above, written but not yet
+  pasted into Datasphere).
+- Investigating the separate `900`-on-9/14 anomaly Blair spotted.
+- Re-registering the widget in SAC's Custom Widgets list.
+- A decision on whether Operational's Timeline should get this same
+  YoY treatment (not asked yet).

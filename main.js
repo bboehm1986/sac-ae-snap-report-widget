@@ -37,14 +37,19 @@
                               - "Eligible Count" — employer eligible-
                                 headcount YoY, from vEmployerEligibleCount
                               - "" for plain status/synod or timeline rows
-            dimensions_3 = Date (Completed_Date; "" for all other row-
-                            kinds) — Timeline data, added 2026-09-10
+            dimensions_3 = Date (Completed_Date for 2027 / ACTDATE for
+                            2026; "" for all other row-kinds) — Timeline
+                            data, added 2026-09-10, extended to carry
+                            both plan years 2026-09-14 for the YoY
+                            comparison chart
             dimensions_4 = Year — added 2026-09-11 for the YoY panel.
-                            Populated only on Health_Plan_Bundle rows
-                            (2027) / "Bucket" rows (2026, same bundle
-                            names via a 2026-side regex parse) / "Eligible
-                            Count" rows (2026 or 2027); "" on every other
-                            row-kind (Status/Synod, HSA, Timeline)
+                            Populated on Health_Plan_Bundle rows (2027) /
+                            "Bucket" rows (2026, same bundle names via a
+                            2026-side regex parse) / "Eligible Count" rows
+                            (2026 or 2027) / Timeline rows (2026 or 2027,
+                            added 2026-09-14 — previously "" on Timeline
+                            rows, when only one year's dates were carried);
+                            "" on every other row-kind (Status/Synod, HSA)
             measures_0   = Employer Count (unused on "Eligible Count"
                             rows — that row-kind's total rides in
                             measures_1 instead, see below)
@@ -146,20 +151,41 @@
         row(["", "", "Eligible Count", "", "2027"], [null, 1310]),
         // Timeline data — folded into this same binding 2026-09-10 (was
         // MOCK_DAILY_COUNTS/dailyCounts, see header comment "Why one binding").
-        row(["", "", "", "2026-10-01", ""], [14]),
-        row(["", "", "", "2026-10-02", ""], [22]),
-        row(["", "", "", "2026-10-03", ""], [19]),
-        row(["", "", "", "2026-10-04", ""], [8]),
-        row(["", "", "", "2026-10-05", ""], [3]),
-        row(["", "", "", "2026-10-06", ""], [27]),
-        row(["", "", "", "2026-10-07", ""], [31]),
-        row(["", "", "", "2026-10-08", ""], [25]),
-        row(["", "", "", "2026-10-09", ""], [18]),
-        row(["", "", "", "2026-10-10", ""], [12]),
-        row(["", "", "", "2026-10-11", ""], [4]),
-        row(["", "", "", "2026-10-12", ""], [2]),
-        row(["", "", "", "2026-10-13", ""], [30]),
-        row(["", "", "", "2026-10-14", ""], [41]),
+        // Year tagged 2026-09-14 (was blank before) so the widget can tell
+        // the two plan years' completions apart for the YoY bar chart —
+        // mirrors the real cube's Enrollment_Year now always being
+        // populated on both Timeline row-kinds. Mock 2026-side dates use
+        // the prior calendar year (2025-10-xx) since that plan year's
+        // election window fell then, matching the real ACTDATE evidence
+        // found in vEmployerSaves/ZVHCM_AE_1_26Q (see BUILD_PLAN doc).
+        row(["", "", "", "2026-10-01", "2027"], [14]),
+        row(["", "", "", "2026-10-02", "2027"], [22]),
+        row(["", "", "", "2026-10-03", "2027"], [19]),
+        row(["", "", "", "2026-10-04", "2027"], [8]),
+        row(["", "", "", "2026-10-05", "2027"], [3]),
+        row(["", "", "", "2026-10-06", "2027"], [27]),
+        row(["", "", "", "2026-10-07", "2027"], [31]),
+        row(["", "", "", "2026-10-08", "2027"], [25]),
+        row(["", "", "", "2026-10-09", "2027"], [18]),
+        row(["", "", "", "2026-10-10", "2027"], [12]),
+        row(["", "", "", "2026-10-11", "2027"], [4]),
+        row(["", "", "", "2026-10-12", "2027"], [2]),
+        row(["", "", "", "2026-10-13", "2027"], [30]),
+        row(["", "", "", "2026-10-14", "2027"], [41]),
+        row(["", "", "", "2025-10-01", "2026"], [9]),
+        row(["", "", "", "2025-10-02", "2026"], [16]),
+        row(["", "", "", "2025-10-03", "2026"], [21]),
+        row(["", "", "", "2025-10-04", "2026"], [11]),
+        row(["", "", "", "2025-10-05", "2026"], [6]),
+        row(["", "", "", "2025-10-06", "2026"], [19]),
+        row(["", "", "", "2025-10-07", "2026"], [24]),
+        row(["", "", "", "2025-10-08", "2026"], [33]),
+        row(["", "", "", "2025-10-09", "2026"], [15]),
+        row(["", "", "", "2025-10-10", "2026"], [9]),
+        row(["", "", "", "2025-10-11", "2026"], [3]),
+        row(["", "", "", "2025-10-12", "2026"], [1]),
+        row(["", "", "", "2025-10-13", "2026"], [20]),
+        row(["", "", "", "2025-10-14", "2026"], [28]),
     ] };
 
     // MOCK_YOY / yoyComparison removed 2026-09-11 — that binding's design
@@ -425,33 +451,26 @@
             }
             .progress-fill { height: 100%; border-radius: 4px; background: var(--accent); }
 
-            /* ---- Timeline chart ---- */
-            /* ---- Timeline heatmap grid — replaced bar chart 2026-09-14,
-               per Blair: a visual grid (one cell per day, color intensity =
-               volume) reads faster than a bar chart for a daily-count
-               series. 5-level color scale, same idea as a GitHub
-               contribution graph. ---- */
-            .timeline-grid { display: flex; flex-wrap: wrap; gap: 5px; }
-            .grid-cell {
-                width: 42px; height: 42px; border-radius: 7px;
-                display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
-                border: 1px solid var(--border);
-            }
-            .grid-cell-value { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
-            .grid-cell-label { font-size: 8.5px; opacity: 0.75; }
-            .grid-cell.level-0 { background: var(--surface-2); color: var(--text-soft); }
-            .grid-cell.level-1 { background: rgba(106,92,240,0.20); color: var(--text); }
-            .grid-cell.level-2 { background: rgba(106,92,240,0.42); color: var(--text); }
-            .grid-cell.level-3 { background: rgba(106,92,240,0.66); color: #ffffff; }
-            .grid-cell.level-4 { background: rgba(106,92,240,0.92); color: #ffffff; }
-            .grid-cell.peak { outline: 2px solid var(--success); outline-offset: 1px; }
-            .timeline-legend { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--text-soft); margin-top: 10px; justify-content: flex-end; }
-            .legend-swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--border); }
-            .legend-swatch.level-0 { background: var(--surface-2); }
-            .legend-swatch.level-1 { background: rgba(106,92,240,0.20); }
-            .legend-swatch.level-2 { background: rgba(106,92,240,0.42); }
-            .legend-swatch.level-3 { background: rgba(106,92,240,0.66); }
-            .legend-swatch.level-4 { background: rgba(106,92,240,0.92); }
+            /* ---- Timeline — YoY grouped bar chart, replaced the heatmap
+               grid 2026-09-14 (per Blair: this widget specifically needed a
+               direct 2026-vs-2027 comparison, which reads better as two
+               bars per day than a single-series intensity grid — the
+               heatmap grid itself stays in use everywhere else, including
+               Operational's own Timeline). Two bars per day, aligned by
+               calendar month/day with the year stripped, since the two
+               plan years' election windows don't share absolute dates. ---- */
+            .timeline-chart { display: flex; align-items: flex-end; gap: 8px; height: 130px; padding-top: 22px; }
+            .tl-day { display: flex; flex-direction: column; align-items: center; flex: 1 1 0; min-width: 0; height: 100%; justify-content: flex-end; }
+            .tl-bars { display: flex; align-items: flex-end; justify-content: center; gap: 3px; width: 100%; height: 100px; }
+            .tl-bar { width: 40%; max-width: 15px; border-radius: 3px 3px 0 0; position: relative; }
+            .tl-bar.y2026 { background: var(--info); }
+            .tl-bar.y2027 { background: var(--accent); }
+            .tl-bar-value { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); font-size: 9px; font-weight: 700; color: var(--text); white-space: nowrap; }
+            .tl-day-label { font-size: 9px; color: var(--text-soft); margin-top: 6px; }
+            .timeline-legend { display: flex; align-items: center; gap: 14px; font-size: 11px; color: var(--text-soft); margin-top: 10px; justify-content: flex-end; }
+            .legend-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 5px; vertical-align: middle; }
+            .legend-swatch.y2026 { background: var(--info); }
+            .legend-swatch.y2027 { background: var(--accent); }
 
         </style>
         <div class="dashboard">
@@ -603,6 +622,15 @@
             return raw;
         }
 
+        // Reduces a "YYYY-MM-DD" key to "MM-DD" — added 2026-09-14 for the
+        // Timeline's YoY comparison, so 2026's and 2027's election windows
+        // (different absolute dates) align on the same x-axis position by
+        // calendar day. Zero-padded, so lexicographic sort stays chronological.
+        _monthDayKey(isoDate) {
+            const m = /^\d{4}-(\d{2}-\d{2})/.exec(isoDate);
+            return m ? m[1] : isoDate;
+        }
+
         // Display-only rename, decided 2026-09-11: our own source says
         // "Value HDHP", but the YoY requirements doc's bucket name is
         // "Value High Deductible" — same plan, different label. Presentation
@@ -626,7 +654,10 @@
             const bySynod = {};
             const bySynodNames = {}; // groupKey -> Set of raw sub-region names rolled into it, for hover tooltips
             const byStatus = {}; // added 2026-09-10 — granular Not Started/In Progress/Abandoned/Needs Follow-up breakdown
-            const byDate = {}; // added 2026-09-10 — Timeline data now rides in this same binding, see note below
+            const byDateYear = {}; // added 2026-09-14 (was byDate, single-year) — keyed by "MM-DD" (year stripped, so
+                                    // the two plan years' election windows align on the same x-axis position), then
+                                    // "2026"/"2027". Enrollment_Year is now always populated on Timeline rows — see
+                                    // header comment and BUILD_PLAN_VWEMPLOYERSAVES.md, "Timeline — YoY comparison".
             const byHealthPlan = {}; // added 2026-09-11 — keyed by Year ("2026"/"2027"), then bucket name
             const byHsaBucket = {}; // added 2026-09-11 — "HSA Annual - Elected 0/>0" / "HSA One Time - Elected 0/>0"
             const byEligibleCount = {}; // added 2026-09-11 — keyed by Year ("2026"/"2027")
@@ -642,8 +673,14 @@
                 const employeeCount = this._measure(r, 1);
 
                 if (date) {
-                    const dateKey = this._normalizeDateKey(date);
-                    byDate[dateKey] = (byDate[dateKey] || 0) + employerCount;
+                    const mmdd = this._monthDayKey(this._normalizeDateKey(date));
+                    // Defaults to 2027 for safety if an older, un-tagged cube
+                    // deploy is still live (Enrollment_Year used to be NULL
+                    // on this row-kind) — matches the single-series behavior
+                    // this replaced.
+                    const y = year || "2027";
+                    if (!byDateYear[mmdd]) byDateYear[mmdd] = {};
+                    byDateYear[mmdd][y] = (byDateYear[mmdd][y] || 0) + employerCount;
                     return; // timeline rows don't count toward status/election/YoY totals
                 }
 
@@ -695,7 +732,11 @@
             // display time via _formatPct(), so a genuinely small-but-nonzero
             // rate doesn't get collapsed down to a misleading "0%".
             const pctComplete = totalSetUp ? (completed / totalSetUp) * 100 : 0;
-            const daily = Object.keys(byDate).sort().map((date) => ({ date, count: byDate[date] }));
+            const daily = Object.keys(byDateYear).sort().map((mmdd) => ({
+                mmdd,
+                y2026: byDateYear[mmdd]["2026"] || 0,
+                y2027: byDateYear[mmdd]["2027"] || 0,
+            }));
             return {
                 totalSetUp, completed, defaulted, open, pctComplete,
                 bySynod, bySynodNames, byStatus, daily,
@@ -899,66 +940,61 @@
             }
             root.getElementById("yoyBreakdown").innerHTML = this._statRowsHtml(yoyEntries, "No YoY data bound yet");
 
-            // Timeline heatmap grid.
+            // Timeline — YoY grouped bar chart.
             this._renderTimeline(root.getElementById("timelineChart"), daily);
 
-            // Title's date range is now computed from the actual data instead
-            // of a hardcoded "(10/1 – 10/14)" — added 2026-09-12, once real
+            // Title's date range is computed from the actual data instead of
+            // a hardcoded "(10/1 – 10/14)" — added 2026-09-12, once real
             // Completed_Date values (which don't follow that mock window at
-            // all) started arriving.
+            // all) started arriving. Uses "MM-DD" keys now (2026-09-14, YoY
+            // rework) — mmdd is already year-agnostic, so no split needed.
             const titleEl = root.getElementById("timelineTitle");
             if (daily.length) {
-                const fmt = (iso) => { const [, m, d] = iso.split("-"); return `${Number(m)}/${Number(d)}`; };
-                titleEl.textContent = `Timeline (${fmt(daily[0].date)} – ${fmt(daily[daily.length - 1].date)})`;
+                const fmt = (mmdd) => { const [m, d] = mmdd.split("-"); return `${Number(m)}/${Number(d)}`; };
+                titleEl.textContent = `Timeline (${fmt(daily[0].mmdd)} – ${fmt(daily[daily.length - 1].mmdd)})`;
             } else {
                 titleEl.textContent = "Timeline";
             }
         }
 
-        // Heatmap grid — replaced the SVG bar chart 2026-09-14. One cell per
-        // day; background color intensity (5-level scale, GitHub-style)
-        // shows relative volume at a glance, while the exact count and date
-        // stay printed on the cell itself — same information as the old
-        // bars, read faster as a grid per Blair. Copied verbatim from the
-        // Operational widget, which got this change first.
+        // YoY grouped bar chart — replaced the single-series heatmap grid
+        // 2026-09-14, per Blair: this widget specifically needed a direct
+        // 2026-vs-2027 comparison (how many completed on this calendar day
+        // last year vs. how many are completing on it this year), which
+        // reads better as two bars per day than a single intensity grid.
+        // Scoped to this widget only — Operational keeps the heatmap grid.
         _renderTimeline(container, daily) {
             if (!daily.length) {
                 container.innerHTML = `<div class="empty-row">No timeline data bound yet</div>`;
                 return;
             }
-            const max = Math.max(1, ...daily.map((d) => d.count));
-            const levelFor = (count) => {
-                if (count <= 0) return 0;
-                const ratio = count / max;
-                if (ratio <= 0.25) return 1;
-                if (ratio <= 0.5) return 2;
-                if (ratio <= 0.75) return 3;
-                return 4;
-            };
+            const max = Math.max(1, ...daily.map((d) => Math.max(d.y2026, d.y2027)));
+            const barHeightPx = (v) => Math.max(v > 0 ? 2 : 0, Math.round((v / max) * 100));
 
-            const cells = daily.map((d) => {
-                const [, m, dd] = d.date.split("-");
+            const days = daily.map((d) => {
+                const [m, dd] = d.mmdd.split("-");
                 const dayLabel = `${Number(m)}/${Number(dd)}`;
-                const isPeak = d.count === max && d.count > 0;
                 return `
-                    <div class="grid-cell level-${levelFor(d.count)}${isPeak ? " peak" : ""}" title="${dayLabel}: ${d.count}">
-                        <div class="grid-cell-value">${d.count}</div>
-                        <div class="grid-cell-label">${dayLabel}</div>
+                    <div class="tl-day">
+                        <div class="tl-bars" title="${dayLabel} — 2026: ${d.y2026}, 2027: ${d.y2027}">
+                            <div class="tl-bar y2026" style="height:${barHeightPx(d.y2026)}px">
+                                <span class="tl-bar-value">${d.y2026}</span>
+                            </div>
+                            <div class="tl-bar y2027" style="height:${barHeightPx(d.y2027)}px">
+                                <span class="tl-bar-value">${d.y2027}</span>
+                            </div>
+                        </div>
+                        <div class="tl-day-label">${dayLabel}</div>
                     </div>`;
             }).join("");
 
             const legend = `
                 <div class="timeline-legend">
-                    <span>Fewer</span>
-                    <span class="legend-swatch level-0"></span>
-                    <span class="legend-swatch level-1"></span>
-                    <span class="legend-swatch level-2"></span>
-                    <span class="legend-swatch level-3"></span>
-                    <span class="legend-swatch level-4"></span>
-                    <span>More</span>
+                    <span><span class="legend-swatch y2026"></span>2026</span>
+                    <span><span class="legend-swatch y2027"></span>2027</span>
                 </div>`;
 
-            container.innerHTML = `<div class="timeline-grid">${cells}</div>${legend}`;
+            container.innerHTML = `<div class="timeline-chart">${days}</div>${legend}`;
         }
     }
 

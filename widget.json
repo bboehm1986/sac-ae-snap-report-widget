@@ -1,7 +1,7 @@
 {
     "id": "com.porticobenefits.aesnapreport",
     "name": "AE Snap Report",
-    "version": "1.0.14",
+    "version": "1.0.15",
     "vendor": "Portico Benefits",
     "license": "",
     "eula": "",
@@ -13,7 +13,7 @@
             "kind": "main",
             "tag": "com-porticobenefits-aesnapreport",
             "url": "https://bboehm1986.github.io/sac-ae-snap-report-widget/main.js",
-            "integrity": "sha384-f2JJ4sgwyLykgOtpyrRmIfiNi9VvmujfMQvuZQySpWCbczK0lGGt/J5l5TizLH1N"
+            "integrity": "sha384-OybSYmuunJGkSrK9SnmsKzK/NfJlVUq5dr4jVaQtarqdHhf+M21tzgFqYZB110s+"
         }
     ],
     "properties": {
@@ -35,7 +35,7 @@
             "feeds": [
                 {
                     "id": "dimensions",
-                    "description": "Status / Synod-Region / Election Sub-Type / Date / Year",
+                    "description": "Status / Synod-Region / Election Sub-Type / Date / Year. Timeline rows (Date populated) now carry Year too (2026 or 2027, added 2026-09-14) -- the Timeline renders as a YoY grouped bar chart, two bars per calendar day, one per plan year.",
                     "type": "dimension"
                 },
                 {
