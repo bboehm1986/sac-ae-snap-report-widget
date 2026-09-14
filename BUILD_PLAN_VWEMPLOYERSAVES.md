@@ -1482,6 +1482,12 @@ LEFT JOIN (
 ) y26 ON y26."EMPRNO" = g."Employer_Number"
 ```
 
+**Status: view saved and deployed, 2026-09-14** (after fixing the
+`CREATE VIEW` wrapper and casting the 5 `String(15)` numeric fields on
+`ZVHCM_AE_1_26Q` — see the two bug notes above). **Not yet done:** the
+Analytic Model (`AM_EMPLOYER_ENROLLMENT_YOY`), the native Table, and
+the Input Control — see "Table configuration spec" below.
+
 **Deliberately not attempted here:** reconciling `Status_2026` (Matt's
 `Undetermined`/`Completed EL`/`Completed OTP` vocabulary) against
 `Status_2027` (`Success`/`Abandoned`/etc.) into one common status — this
