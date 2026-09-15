@@ -1934,3 +1934,44 @@ live data, and confirming the day-by-day table and pace status look
 right against real numbers — worth double-checking the On Track/Watch/
 Act thresholds specifically once real data is behind it, since those
 were inferred from a mockup, not confirmed.
+
+## v1.0.17 failed to load in SAC; emergency-rolled-back, then re-deployed clean — 2026-09-15
+
+**v1.0.17 failed to load in SAC** — generic "couldn't load the custom
+widget" error, fresh Correlation ID even after hard refresh and
+delete-recreate. **Every external check on the file passed cleanly**
+(SRI hash match, zero console errors executing it directly in a
+browser, correct render, correct CORS/content-type headers) — and
+another widget on the same tenant loaded fine at the same time, ruling
+out a SAC-wide outage. Root cause not confirmed; most likely a SAC-side
+caching issue (possibly compounding the already-known "Custom Widgets
+registry doesn't reliably re-fetch a changed manifest" behavior — see
+"SAC Custom Widget registration" above), not a defect in the v1.0.17
+code itself.
+
+**With a presentation under an hour away, emergency-rolled-back**:
+restored the exact v1.0.16 `main.js`/`widget.json` (bar-chart Timeline)
+byte-for-byte, republished under a new version number, **v1.0.18**
+(same hash as v1.0.16:
+`sha384-Bux96FRvdWPDbc8WITVxbx6MiFFhIA2r26aLimAUi+k9XozQDahI2QfznthS75Ga`),
+specifically so SAC couldn't confuse the registration with whatever
+state v1.0.17 got stuck in. **Confirmed working** — Blair re-registered,
+tiles showed correct numbers.
+
+**Re-attempted once time pressure was off**: republished the identical
+v1.0.17 content (day-by-day table + cumulative tracker) under yet
+another fresh version number, **v1.0.19** (same hash as v1.0.17), after
+a full propagation wait and a from-scratch browser verification (fresh
+tab, zero console errors, correct render) before Blair touched SAC at
+all. **Confirmed working this time** — Blair re-registered, tiles and
+the new Timeline both render correctly on live data.
+
+**Current live state:** `sac-ae-snap-report-widget` v1.0.19, day-by-day
+table + cumulative pace tracker Timeline, confirmed working on real
+data. v1.0.18 (bar-chart fallback) stays available in git history
+(commit `92771e2`) in case this ever needs rolling back again.
+
+**Still not done:** confirming the On Track/Watch/Act thresholds look
+right against real pace numbers (not yet checked — the mockup-inferred
+thresholds were never validated against a real employer population's
+actual pace).
