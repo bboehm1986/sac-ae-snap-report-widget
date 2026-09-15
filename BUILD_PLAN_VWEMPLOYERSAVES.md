@@ -1975,3 +1975,49 @@ data. v1.0.18 (bar-chart fallback) stays available in git history
 right against real pace numbers (not yet checked — the mockup-inferred
 thresholds were never validated against a real employer population's
 actual pace).
+
+## Timeline fixed to the real 10/1-10/14 AE window — 2026-09-15
+
+Blair asked why the Timeline table wasn't fixed to Annual Enrollment's
+actual window (10/1 through 10/14, confirmed) — good catch: it had
+been purely data-driven (whatever dates showed up in `daily`, in
+whatever order), which meant a day with zero completions would
+silently vanish from the table instead of showing `0`, and any stray
+out-of-window date — like the still-unresolved Issue 1 anomaly
+(900 identically-timestamped "completions" from a batch job, dated
+weeks before the real window) — would have silently stretched the
+table instead of being excluded.
+
+**Fix:** `_parseEmployerStatus()` now tracks raw dates keyed by plan-
+year tag then full `"YYYY-MM-DD"` (`rawDatesByYear`, was `byDateYear`
+keyed straight by `"MM-DD"`). New `_fixedWindowCounts()` builds a
+dense, zero-filled `10/1`-`10/14` map per plan year: `_anchorYear()`
+picks whichever real calendar year occurs most often among that year's
+actual dated rows (not hardcoded — this project's own convention
+already established a given plan year's Oct window can fall in any
+real calendar year), then the 14-day window is built against that
+year specifically, with anything outside it dropped. New static
+`AE_WINDOW_MONTH`/`AE_WINDOW_START_DAY`/`AE_WINDOW_LENGTH_DAYS` on the
+class make the window itself a named, easy-to-find constant rather
+than a buried literal.
+
+**Verified in the Browser pane, 2026-09-15** — two checks:
+1. Existing mock data still produces the identical result as before
+   (101/71%/70%/On Track, 14 rows) — the fix is a no-op for
+   well-behaved data.
+2. **Stress test**, injected via `onCustomWidgetAfterUpdate` with a
+   synthetic dataset: 13 real Oct days plus one deliberately-skipped
+   day (`10/07`) plus one stray `9/14` row carrying `900` (mimicking
+   Issue 1 exactly). Result: table stayed exactly 14 rows, `AE Day 7`
+   correctly showed `0` instead of disappearing, and the `900`-count
+   anomaly was fully excluded from every total (`Count Completed 2027`
+   summed to `39`, i.e. 13 real days × 3 — not `939`).
+
+Pushed `sac-ae-snap-report-widget` v1.0.20
+(`sha384-qwMPtbj3ITRDgQlunFWOcoK3VXTFxcIeB3rE9SBYk6EI0InHkZRxd9L8EFHC4jgq`).
+
+**Not yet done:** re-registering the widget in SAC to pick up v1.0.20
+on live data. Worth specifically checking whether the still-open Issue
+1 anomaly (dated outside the 10/1-10/14 window) is now correctly
+excluded from the live Timeline, as one more confirmation this fix
+works against the real data it was built to guard against.

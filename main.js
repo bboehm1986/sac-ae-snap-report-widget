@@ -652,13 +652,51 @@
             return raw;
         }
 
-        // Reduces a "YYYY-MM-DD" key to "MM-DD" — added 2026-09-14 for the
-        // Timeline's YoY comparison, so 2026's and 2027's election windows
-        // (different absolute dates) align on the same x-axis position by
-        // calendar day. Zero-padded, so lexicographic sort stays chronological.
-        _monthDayKey(isoDate) {
-            const m = /^\d{4}-(\d{2}-\d{2})/.exec(isoDate);
-            return m ? m[1] : isoDate;
+        // Fixed AE election window — confirmed by Blair, 2026-09-15: Annual
+        // Enrollment always runs 10/1 through 10/14, every plan year. The
+        // Timeline builds a dense, zero-filled table over exactly this
+        // window instead of whatever dates happen to appear in the bound
+        // data — a day with zero completions still shows as "0" instead of
+        // silently vanishing, and any stray out-of-window date (e.g. the
+        // batch-job anomaly flagged separately in BUILD_PLAN_VWEMPLOYERSAVES.md,
+        // "Two live data-quality issues") is excluded instead of silently
+        // stretching the table.
+        static get AE_WINDOW_MONTH() { return "10"; }
+        static get AE_WINDOW_START_DAY() { return 1; }
+        static get AE_WINDOW_LENGTH_DAYS() { return 14; }
+
+        // Each plan year's real calendar year isn't known ahead of time —
+        // this project's own convention already established a given plan
+        // year's Oct window can fall in any real calendar year (e.g. the
+        // "2027" plan year's window fell in October 2026). So the anchor
+        // year is derived from the actual dated rows themselves: whichever
+        // calendar year occurs most often among them, not assumed/hardcoded.
+        _anchorYear(isoDates) {
+            const counts = {};
+            Object.keys(isoDates).forEach((iso) => {
+                const y = iso.slice(0, 4);
+                counts[y] = (counts[y] || 0) + 1;
+            });
+            let best = null, bestCount = -1;
+            Object.keys(counts).forEach((y) => {
+                if (counts[y] > bestCount) { best = y; bestCount = counts[y]; }
+            });
+            return best;
+        }
+
+        // Builds a dense { "10-01": count, ..., "10-14": count } map for one
+        // plan year from its raw { "YYYY-MM-DD": count } rows — zero-filled,
+        // clipped to the fixed AE window, anomalies outside it dropped.
+        _fixedWindowCounts(isoDates) {
+            const anchorYear = this._anchorYear(isoDates);
+            const out = {};
+            for (let i = 0; i < this.constructor.AE_WINDOW_LENGTH_DAYS; i++) {
+                const dd = String(this.constructor.AE_WINDOW_START_DAY + i).padStart(2, "0");
+                const mmdd = `${this.constructor.AE_WINDOW_MONTH}-${dd}`;
+                const iso = anchorYear ? `${anchorYear}-${mmdd}` : null;
+                out[mmdd] = (iso && isoDates[iso]) || 0;
+            }
+            return out;
         }
 
         // Display-only rename, decided 2026-09-11: our own source says
@@ -684,10 +722,12 @@
             const bySynod = {};
             const bySynodNames = {}; // groupKey -> Set of raw sub-region names rolled into it, for hover tooltips
             const byStatus = {}; // added 2026-09-10 — granular Not Started/In Progress/Abandoned/Needs Follow-up breakdown
-            const byDateYear = {}; // added 2026-09-14 (was byDate, single-year) — keyed by "MM-DD" (year stripped, so
-                                    // the two plan years' election windows align on the same x-axis position), then
-                                    // "2026"/"2027". Enrollment_Year is now always populated on Timeline rows — see
-                                    // header comment and BUILD_PLAN_VWEMPLOYERSAVES.md, "Timeline — YoY comparison".
+            const rawDatesByYear = { "2027": {}, "2026": {} }; // rebuilt 2026-09-15 (was byDateYear, keyed
+                                    // directly by "MM-DD") — now keyed by plan-year tag, then the full
+                                    // "YYYY-MM-DD", so _fixedWindowCounts() can anchor each year to its own
+                                    // real calendar year and clip/zero-fill to the fixed 10/1-10/14 AE window
+                                    // rather than trusting whatever dates happen to appear in the data. See
+                                    // BUILD_PLAN_VWEMPLOYERSAVES.md, "Timeline — YoY comparison".
             const byHealthPlan = {}; // added 2026-09-11 — keyed by Year ("2026"/"2027"), then bucket name
             const byHsaBucket = {}; // added 2026-09-11 — "HSA Annual - Elected 0/>0" / "HSA One Time - Elected 0/>0"
             const byEligibleCount = {}; // added 2026-09-11 — keyed by Year ("2026"/"2027")
@@ -703,14 +743,14 @@
                 const employeeCount = this._measure(r, 1);
 
                 if (date) {
-                    const mmdd = this._monthDayKey(this._normalizeDateKey(date));
+                    const iso = this._normalizeDateKey(date);
                     // Defaults to 2027 for safety if an older, un-tagged cube
                     // deploy is still live (Enrollment_Year used to be NULL
                     // on this row-kind) — matches the single-series behavior
                     // this replaced.
                     const y = year || "2027";
-                    if (!byDateYear[mmdd]) byDateYear[mmdd] = {};
-                    byDateYear[mmdd][y] = (byDateYear[mmdd][y] || 0) + employerCount;
+                    if (!rawDatesByYear[y]) rawDatesByYear[y] = {};
+                    rawDatesByYear[y][iso] = (rawDatesByYear[y][iso] || 0) + employerCount;
                     return; // timeline rows don't count toward status/election/YoY totals
                 }
 
@@ -780,11 +820,18 @@
             // display time via _formatPct(), so a genuinely small-but-nonzero
             // rate doesn't get collapsed down to a misleading "0%".
             const pctComplete = totalSetUp ? (completed / totalSetUp) * 100 : 0;
-            const daily = Object.keys(byDateYear).sort().map((mmdd) => ({
-                mmdd,
-                y2026: byDateYear[mmdd]["2026"] || 0,
-                y2027: byDateYear[mmdd]["2027"] || 0,
-            }));
+            // Fixed, zero-filled 10/1-10/14 window (see _fixedWindowCounts
+            // header comment) — always exactly 14 entries, in order,
+            // regardless of which days actually had completions or whether
+            // any stray out-of-window dates showed up in the bound data.
+            const fixed2027 = this._fixedWindowCounts(rawDatesByYear["2027"] || {});
+            const fixed2026 = this._fixedWindowCounts(rawDatesByYear["2026"] || {});
+            const daily = [];
+            for (let i = 0; i < this.constructor.AE_WINDOW_LENGTH_DAYS; i++) {
+                const dd = String(this.constructor.AE_WINDOW_START_DAY + i).padStart(2, "0");
+                const mmdd = `${this.constructor.AE_WINDOW_MONTH}-${dd}`;
+                daily.push({ mmdd, y2026: fixed2026[mmdd] || 0, y2027: fixed2027[mmdd] || 0 });
+            }
             return {
                 totalSetUp, completed, defaulted, open, pctComplete,
                 bySynod, bySynodNames, byStatus, daily,
