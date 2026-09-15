@@ -158,34 +158,41 @@
         // the prior calendar year (2025-10-xx) since that plan year's
         // election window fell then, matching the real ACTDATE evidence
         // found in vEmployerSaves/ZVHCM_AE_1_26Q (see BUILD_PLAN doc).
-        row(["", "", "", "2026-10-01", "2027"], [14]),
-        row(["", "", "", "2026-10-02", "2027"], [22]),
-        row(["", "", "", "2026-10-03", "2027"], [19]),
-        row(["", "", "", "2026-10-04", "2027"], [8]),
-        row(["", "", "", "2026-10-05", "2027"], [3]),
-        row(["", "", "", "2026-10-06", "2027"], [27]),
-        row(["", "", "", "2026-10-07", "2027"], [31]),
-        row(["", "", "", "2026-10-08", "2027"], [25]),
-        row(["", "", "", "2026-10-09", "2027"], [18]),
-        row(["", "", "", "2026-10-10", "2027"], [12]),
-        row(["", "", "", "2026-10-11", "2027"], [4]),
-        row(["", "", "", "2026-10-12", "2027"], [2]),
-        row(["", "", "", "2026-10-13", "2027"], [30]),
-        row(["", "", "", "2026-10-14", "2027"], [41]),
-        row(["", "", "", "2025-10-01", "2026"], [9]),
-        row(["", "", "", "2025-10-02", "2026"], [16]),
-        row(["", "", "", "2025-10-03", "2026"], [21]),
-        row(["", "", "", "2025-10-04", "2026"], [11]),
-        row(["", "", "", "2025-10-05", "2026"], [6]),
-        row(["", "", "", "2025-10-06", "2026"], [19]),
-        row(["", "", "", "2025-10-07", "2026"], [24]),
-        row(["", "", "", "2025-10-08", "2026"], [33]),
-        row(["", "", "", "2025-10-09", "2026"], [15]),
-        row(["", "", "", "2025-10-10", "2026"], [9]),
-        row(["", "", "", "2025-10-11", "2026"], [3]),
-        row(["", "", "", "2025-10-12", "2026"], [1]),
-        row(["", "", "", "2025-10-13", "2026"], [20]),
-        row(["", "", "", "2025-10-14", "2026"], [28]),
+        // Rescaled 2026-09-15 (was 14/22/19/8/3/27/31/25/18/12/4/2/30/41 for
+        // 2027 and a similarly-large 2026 set) — those values summed to far
+        // more than the mock's own total employer population (143), which
+        // made the new cumulative-% tracker show >100%. Rescaled so both
+        // years' cumulative sums stay comfortably under their own totals
+        // (2027 total 143, 2026 total 101 — see the Value/Select Copay/HDHP
+        // 2026 mock rows above), landing on a close, realistic "On Track" demo.
+        row(["", "", "", "2026-10-01", "2027"], [5]),
+        row(["", "", "", "2026-10-02", "2027"], [9]),
+        row(["", "", "", "2026-10-03", "2027"], [7]),
+        row(["", "", "", "2026-10-04", "2027"], [3]),
+        row(["", "", "", "2026-10-05", "2027"], [1]),
+        row(["", "", "", "2026-10-06", "2027"], [11]),
+        row(["", "", "", "2026-10-07", "2027"], [12]),
+        row(["", "", "", "2026-10-08", "2027"], [10]),
+        row(["", "", "", "2026-10-09", "2027"], [7]),
+        row(["", "", "", "2026-10-10", "2027"], [5]),
+        row(["", "", "", "2026-10-11", "2027"], [2]),
+        row(["", "", "", "2026-10-12", "2027"], [1]),
+        row(["", "", "", "2026-10-13", "2027"], [12]),
+        row(["", "", "", "2026-10-14", "2027"], [16]),
+        row(["", "", "", "2025-10-01", "2026"], [3]),
+        row(["", "", "", "2025-10-02", "2026"], [5]),
+        row(["", "", "", "2025-10-03", "2026"], [7]),
+        row(["", "", "", "2025-10-04", "2026"], [4]),
+        row(["", "", "", "2025-10-05", "2026"], [2]),
+        row(["", "", "", "2025-10-06", "2026"], [6]),
+        row(["", "", "", "2025-10-07", "2026"], [8]),
+        row(["", "", "", "2025-10-08", "2026"], [11]),
+        row(["", "", "", "2025-10-09", "2026"], [5]),
+        row(["", "", "", "2025-10-10", "2026"], [3]),
+        row(["", "", "", "2025-10-11", "2026"], [1]),
+        row(["", "", "", "2025-10-12", "2026"], [0]),
+        row(["", "", "", "2025-10-13", "2026"], [7]),
+        row(["", "", "", "2025-10-14", "2026"], [9]),
         // Operational-only row-kinds — added to the SHARED cube 2026-09-13/14
         // for the Operational widget, but present in every widget's data
         // since all three bind to the same model. Added here 2026-09-14 as
@@ -469,26 +476,31 @@
             }
             .progress-fill { height: 100%; border-radius: 4px; background: var(--accent); }
 
-            /* ---- Timeline — YoY grouped bar chart, replaced the heatmap
-               grid 2026-09-14 (per Blair: this widget specifically needed a
-               direct 2026-vs-2027 comparison, which reads better as two
-               bars per day than a single-series intensity grid — the
-               heatmap grid itself stays in use everywhere else, including
-               Operational's own Timeline). Two bars per day, aligned by
-               calendar month/day with the year stripped, since the two
-               plan years' election windows don't share absolute dates. ---- */
-            .timeline-chart { display: flex; align-items: flex-end; gap: 8px; height: 130px; padding-top: 22px; }
-            .tl-day { display: flex; flex-direction: column; align-items: center; flex: 1 1 0; min-width: 0; height: 100%; justify-content: flex-end; }
-            .tl-bars { display: flex; align-items: flex-end; justify-content: center; gap: 3px; width: 100%; height: 100px; }
-            .tl-bar { width: 40%; max-width: 15px; border-radius: 3px 3px 0 0; position: relative; }
-            .tl-bar.y2026 { background: var(--info); }
-            .tl-bar.y2027 { background: var(--accent); }
-            .tl-bar-value { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); font-size: 9px; font-weight: 700; color: var(--text); white-space: nowrap; }
-            .tl-day-label { font-size: 9px; color: var(--text-soft); margin-top: 6px; }
-            .timeline-legend { display: flex; align-items: center; gap: 14px; font-size: 11px; color: var(--text-soft); margin-top: 10px; justify-content: flex-end; }
-            .legend-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 5px; vertical-align: middle; }
-            .legend-swatch.y2026 { background: var(--info); }
-            .legend-swatch.y2027 { background: var(--accent); }
+            /* ---- Timeline — day-by-day table + cumulative pace tracker,
+               replaced the grouped bar chart 2026-09-15, per Blair (emulating
+               a spreadsheet mockup he shared): a leading "Cumulative Tally
+               Tracker" summary (running total/pct for 2027, the matching
+               cumulative pct from 2026 at the same point, and an On Track /
+               Watch / Act status) followed by a day-by-day table (count and
+               each year's own per-day % of that year's total). ---- */
+            .cum-tracker { background: var(--surface-2); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
+            .cum-tracker-title { font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-soft); margin-bottom: 10px; }
+            .cum-tracker-row { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+            .cum-stat { display: flex; flex-direction: column; gap: 2px; }
+            .cum-stat-label { font-size: 10px; color: var(--text-soft); white-space: nowrap; }
+            .cum-stat-value { font-size: 20px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+            .cum-status { margin-left: auto; font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 100px; white-space: nowrap; }
+            .cum-status.on-track { color: var(--success); background: var(--success-bg); }
+            .cum-status.watch { color: var(--warning); background: var(--warning-bg); }
+            .cum-status.act { color: var(--danger); background: var(--danger-bg); }
+
+            .timeline-table-wrap { overflow-x: auto; }
+            .timeline-table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+            .timeline-table th, .timeline-table td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--border); }
+            .timeline-table th:first-child, .timeline-table td:first-child { text-align: left; }
+            .timeline-table thead th { color: var(--text-soft); font-weight: 600; text-transform: uppercase; font-size: 9.5px; letter-spacing: 0.03em; }
+            .timeline-table tbody td { font-variant-numeric: tabular-nums; color: var(--text); }
+            .timeline-table tbody tr:last-child td { border-bottom: none; }
 
         </style>
         <div class="dashboard">
@@ -536,7 +548,7 @@
             </div>
 
             <div class="section-title" id="timelineTitle">Timeline</div>
-            <div class="panel-caption" id="timelineCaption">Employers completing Annual Enrollment, by day</div>
+            <div class="panel-caption" id="timelineCaption">Day-by-day completions and cumulative pace vs. 2026</div>
             <div class="panel">
                 <div id="timelineChart"></div>
             </div>
@@ -976,8 +988,14 @@
             }
             root.getElementById("yoyBreakdown").innerHTML = this._statRowsHtml(yoyEntries, "No YoY data bound yet");
 
-            // Timeline — YoY grouped bar chart.
-            this._renderTimeline(root.getElementById("timelineChart"), daily);
+            // Timeline — day-by-day table + cumulative pace tracker.
+            // 2026's total comes from summing the Bucket row-kind's
+            // per-employer counts (already in byHealthPlan["2026"] — the
+            // same data the YoY panel above uses) rather than a new cube
+            // measure, since it's already fully available.
+            const total2027 = status.totalSetUp;
+            const total2026 = Object.values(status.byHealthPlan["2026"] || {}).reduce((a, b) => a + b, 0);
+            this._renderTimeline(root.getElementById("timelineChart"), daily, total2027, total2026);
 
             // Title's date range is computed from the actual data instead of
             // a hardcoded "(10/1 – 10/14)" — added 2026-09-12, once real
@@ -993,44 +1011,89 @@
             }
         }
 
-        // YoY grouped bar chart — replaced the single-series heatmap grid
-        // 2026-09-14, per Blair: this widget specifically needed a direct
-        // 2026-vs-2027 comparison (how many completed on this calendar day
-        // last year vs. how many are completing on it this year), which
-        // reads better as two bars per day than a single intensity grid.
-        // Scoped to this widget only — Operational keeps the heatmap grid.
-        _renderTimeline(container, daily) {
+        // Compares this year's cumulative completion rate to last year's at
+        // the same point in the election window and returns a pace status.
+        // Thresholds inferred from Blair's mockup examples (40% vs 35% =
+        // "On Track", 40% vs 42% = "Watch", 40% vs 50% = "Act") — not an
+        // externally-confirmed business rule, easy to adjust if the real
+        // thresholds should differ.
+        _paceStatus(deltaPct) {
+            if (deltaPct >= 0) return { label: "On Track", cls: "on-track" };
+            if (deltaPct >= -5) return { label: "Watch", cls: "watch" };
+            return { label: "Act", cls: "act" };
+        }
+
+        // Day-by-day table + leading cumulative pace tracker — replaced the
+        // grouped bar chart 2026-09-15, per Blair, emulating a spreadsheet
+        // mockup he shared. Day-by-day rows show each year's own per-day %
+        // of that year's total (not cumulative) — matches the mockup, where
+        // each day's % is independent (e.g. Day 2: 1000/20% vs Day 5:
+        // 2000/40%, both against a fixed total, not running sums). The
+        // Cumulative Tally Tracker above the table is the only place a
+        // running total appears, since that's what the On Track/Watch/Act
+        // pace comparison needs.
+        _renderTimeline(container, daily, total2027, total2026) {
             if (!daily.length) {
                 container.innerHTML = `<div class="empty-row">No timeline data bound yet</div>`;
                 return;
             }
-            const max = Math.max(1, ...daily.map((d) => Math.max(d.y2026, d.y2027)));
-            const barHeightPx = (v) => Math.max(v > 0 ? 2 : 0, Math.round((v / max) * 100));
 
-            const days = daily.map((d) => {
-                const [m, dd] = d.mmdd.split("-");
-                const dayLabel = `${Number(m)}/${Number(dd)}`;
-                return `
-                    <div class="tl-day">
-                        <div class="tl-bars" title="${dayLabel} — 2026: ${d.y2026}, 2027: ${d.y2027}">
-                            <div class="tl-bar y2026" style="height:${barHeightPx(d.y2026)}px">
-                                <span class="tl-bar-value">${d.y2026}</span>
-                            </div>
-                            <div class="tl-bar y2027" style="height:${barHeightPx(d.y2027)}px">
-                                <span class="tl-bar-value">${d.y2027}</span>
-                            </div>
+            let cum2027 = 0, cum2026 = 0;
+            const rows = daily.map((d, i) => {
+                cum2027 += d.y2027;
+                cum2026 += d.y2026;
+                return {
+                    dayLabel: `AE Day ${i + 1}`,
+                    mmdd: d.mmdd,
+                    count2027: d.y2027,
+                    pct2027: total2027 ? (d.y2027 / total2027) * 100 : 0,
+                    pct2026: total2026 ? (d.y2026 / total2026) * 100 : 0,
+                };
+            });
+
+            const cumPct2027 = total2027 ? (cum2027 / total2027) * 100 : 0;
+            const cumPct2026 = total2026 ? (cum2026 / total2026) * 100 : 0;
+            const pace = this._paceStatus(cumPct2027 - cumPct2026);
+
+            const tracker = `
+                <div class="cum-tracker">
+                    <div class="cum-tracker-title">Cumulative Tally Tracker</div>
+                    <div class="cum-tracker-row">
+                        <div class="cum-stat">
+                            <div class="cum-stat-label">Count Completed 2027</div>
+                            <div class="cum-stat-value">${cum2027.toLocaleString()}</div>
                         </div>
-                        <div class="tl-day-label">${dayLabel}</div>
-                    </div>`;
-            }).join("");
-
-            const legend = `
-                <div class="timeline-legend">
-                    <span><span class="legend-swatch y2026"></span>2026</span>
-                    <span><span class="legend-swatch y2027"></span>2027</span>
+                        <div class="cum-stat">
+                            <div class="cum-stat-label">% Completed 2027</div>
+                            <div class="cum-stat-value">${this._formatPct(cumPct2027)}</div>
+                        </div>
+                        <div class="cum-stat">
+                            <div class="cum-stat-label">% Completed 2026</div>
+                            <div class="cum-stat-value">${this._formatPct(cumPct2026)}</div>
+                        </div>
+                        <div class="cum-status ${pace.cls}">${pace.label}</div>
+                    </div>
                 </div>`;
 
-            container.innerHTML = `<div class="timeline-chart">${days}</div>${legend}`;
+            const tableRows = rows.map((r) => `
+                <tr title="${r.mmdd}">
+                    <td>${r.dayLabel}</td>
+                    <td>${r.count2027.toLocaleString()}</td>
+                    <td>${this._formatPct(r.pct2027)}</td>
+                    <td>${this._formatPct(r.pct2026)}</td>
+                </tr>`).join("");
+
+            const table = `
+                <div class="timeline-table-wrap">
+                    <table class="timeline-table">
+                        <thead>
+                            <tr><th>Day</th><th>Count Completed 2027</th><th>% Completed 2027</th><th>% Completed 2026</th></tr>
+                        </thead>
+                        <tbody>${tableRows}</tbody>
+                    </table>
+                </div>`;
+
+            container.innerHTML = tracker + table;
         }
     }
 
