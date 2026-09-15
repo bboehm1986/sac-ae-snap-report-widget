@@ -1061,9 +1061,9 @@ SELECT
 FROM (
     SELECT
         CASE
-            WHEN DAYS_BETWEEN("Last_Attempted_On", CURRENT_DATE) <= 7 THEN 'Stalled 0-7 Days'
-            WHEN DAYS_BETWEEN("Last_Attempted_On", CURRENT_DATE) <= 14 THEN 'Stalled 8-14 Days'
-            ELSE 'Stalled 15+ Days'
+            WHEN DAYS_BETWEEN("Last_Attempted_On", CURRENT_DATE) <= 3 THEN 'Stalled 0-3 Days'
+            WHEN DAYS_BETWEEN("Last_Attempted_On", CURRENT_DATE) <= 7 THEN 'Stalled 4-7 Days'
+            ELSE 'Stalled 8+ Days'
         END AS "Bucket"
     FROM "GLD_AE_Employer_Enrollment"
     WHERE "Enrollment_Status" != 'Success'
@@ -2058,3 +2058,78 @@ scratch each time. Same proven fix applied: identical content
 republished under a fresh version number, **v1.0.22** (same hash as
 v1.0.21:
 `sha384-3W6VXr/qgn058epFQeeKetXJfmpVOTLb5ZWcr8+Bungeidlu6JJLbyxC6NniNVj4`).
+
+## Stalled Time buckets rescaled to fit the real 14-day window — 2026-09-16
+
+Blair, looking at the live Operational dashboard: the original
+`0-7 / 8-14 / 15+` scheme barely differentiates anything inside the
+real ~14-day AE window (10/1-10/14, confirmed) — `15+` is nearly
+unreachable within a window that short, so almost everything not yet
+completed piles into `0-7`. **Rescaled to `0-3 / 4-7 / 8+` Days**
+(confirmed by Blair) — the existing "Stalled buckets" cube block
+(`DS_EMPLOYER_ENROLLMENT_SUMMARY`, block 10) updated in place, same
+`DAYS_BETWEEN("Last_Attempted_On", CURRENT_DATE)` logic, just new
+threshold values and bucket labels. `sac-ae-operational-widget/main.js`
+updated to match — `STALLED_BUCKET_ORDER` and the mock rows both
+renamed from `Stalled 0-7/8-14/15+ Days` to `Stalled 0-3/4-7/8+ Days`.
+Display rendering (`.replace("Stalled ", "")`) needed no change — it
+already works off whatever label the bucket carries.
+
+**Status: main.js changes made, cube SQL written, not yet deployed.**
+
+## Operational's Timeline ported to the same redesign — 2026-09-16
+
+Blair: apply the same Timeline redesign Snap Report just got (day-by-
+day table + Cumulative Tally Tracker) to Operational too. Confirmed
+`sac-ae-operational-widget` should get the identical treatment, not
+just a heatmap-grid touch-up — see the three-question check-in this
+same day (window length confirmed still 14 days; Timeline treatment
+confirmed full port; Stalled buckets confirmed `0-3/4-7/8+`).
+
+**This also fixed a real latent bug.** Operational's Timeline
+previously had *no year separation at all* — it never read
+`Enrollment_Year` on Timeline rows, just bucketed every date string it
+saw into one flat series. Once the shared cube grew a 2026-tagged
+Timeline block for Snap Report's YoY comparison, Operational would
+have started silently mixing both plan years' dates into what looked
+like one continuous series (28 entries instead of 14, no indication
+two different years were blended together) — this was never actually
+exercised against live 2026 data before now, so it hadn't surfaced yet.
+
+**Ported verbatim from `sac-ae-snap-report-widget`:** the fixed
+`AE_WINDOW_MONTH`/`START_DAY`/`LENGTH_DAYS` constants,
+`_anchorYear()`/`_fixedWindowCounts()`, `_paceStatus()`, and the full
+`_renderTimeline()` rewrite. Parser reworked the same way — `byDate`
+(no year key at all, worse than Snap Report's pre-fix `byDateYear`)
+replaced with `rawDatesByYear`.
+
+**One bug found and fixed during this port, specific to this
+widget:** `_parseEmployerStatus()`'s returned object only ever exposed
+`byElectionType: byHealthPlan["2027"] || {}` — the raw `byHealthPlan`
+object itself was never returned, since this widget never needed it
+directly before (Election Type panel only ever wanted the 2027 slice).
+The new Timeline code's 2026 total-population denominator needs the
+raw object. Fixed by adding `byHealthPlan` alongside `byElectionType`
+in the return. First browser check threw `Cannot read properties of
+undefined (reading '2026')` at this exact spot before the fix — caught
+immediately by console-checking, not left for live data to surface.
+
+Mock data extended to match: 4 new 2026-side health-plan-bucket rows
+(`35/29/28/9`, mirroring Snap Report's mock exactly) and the Timeline
+mock rows rescaled and split into matching 2027/2026 series (same
+values as Snap Report's mock, since this widget's base Status/Synod
+mock rows already summed to the identical 143 total).
+
+**Verified in the Browser pane, including a stale-console false alarm
+worth noting:** a genuinely fresh tab confirmed zero console errors and
+correct data (`101` / `71%` / `70%` / `On Track`, 14 rows, Election
+Type panel still correctly isolated to 2027 only) — an *earlier* tab
+kept showing the pre-fix error message on every reload even after the
+fix landed, which turned out to be stale console history carried over
+within that tab rather than a live recurrence; a fresh tab settled it.
+Pushed `sac-ae-operational-widget` v1.0.4
+(`sha384-YNCVb4/t2HEzwayWKLR4F0/0MMtBunQI5ZQ76sIACy3PB86yAJMZCmUt74c8xFg1`).
+
+**Not yet done:** deploying the rescaled Stalled Time bucket SQL (see
+section above — same cube redeploy covers both changes), and
+re-registering `sac-ae-operational-widget` in SAC to pick up v1.0.4.
