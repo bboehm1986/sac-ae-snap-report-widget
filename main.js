@@ -151,20 +151,11 @@
         row(["", "", "Eligible Count", "", "2027"], [null, 1310]),
         // Timeline data — folded into this same binding 2026-09-10 (was
         // MOCK_DAILY_COUNTS/dailyCounts, see header comment "Why one binding").
-        // Year tagged 2026-09-14 (was blank before) so the widget can tell
-        // the two plan years' completions apart for the YoY bar chart —
-        // mirrors the real cube's Enrollment_Year now always being
-        // populated on both Timeline row-kinds. Mock 2026-side dates use
-        // the prior calendar year (2025-10-xx) since that plan year's
-        // election window fell then, matching the real ACTDATE evidence
-        // found in vEmployerSaves/ZVHCM_AE_1_26Q (see BUILD_PLAN doc).
-        // Rescaled 2026-09-15 (was 14/22/19/8/3/27/31/25/18/12/4/2/30/41 for
-        // 2027 and a similarly-large 2026 set) — those values summed to far
-        // more than the mock's own total employer population (143), which
-        // made the new cumulative-% tracker show >100%. Rescaled so both
-        // years' cumulative sums stay comfortably under their own totals
-        // (2027 total 143, 2026 total 101 — see the Value/Select Copay/HDHP
-        // 2026 mock rows above), landing on a close, realistic "On Track" demo.
+        // 2027-only since 2026-09-16 — the 2026 series was removed
+        // entirely (ACTDATE can't support genuine day-by-day association
+        // for 2026 data; see BUILD_PLAN doc, "Reversal: 2026 day-by-day
+        // Timeline data is not usable"). Values unchanged from the prior
+        // rescale (summed to stay under the mock's own 143 total).
         row(["", "", "", "2026-10-01", "2027"], [5]),
         row(["", "", "", "2026-10-02", "2027"], [9]),
         row(["", "", "", "2026-10-03", "2027"], [7]),
@@ -179,20 +170,6 @@
         row(["", "", "", "2026-10-12", "2027"], [1]),
         row(["", "", "", "2026-10-13", "2027"], [12]),
         row(["", "", "", "2026-10-14", "2027"], [16]),
-        row(["", "", "", "2025-10-01", "2026"], [3]),
-        row(["", "", "", "2025-10-02", "2026"], [5]),
-        row(["", "", "", "2025-10-03", "2026"], [7]),
-        row(["", "", "", "2025-10-04", "2026"], [4]),
-        row(["", "", "", "2025-10-05", "2026"], [2]),
-        row(["", "", "", "2025-10-06", "2026"], [6]),
-        row(["", "", "", "2025-10-07", "2026"], [8]),
-        row(["", "", "", "2025-10-08", "2026"], [11]),
-        row(["", "", "", "2025-10-09", "2026"], [5]),
-        row(["", "", "", "2025-10-10", "2026"], [3]),
-        row(["", "", "", "2025-10-11", "2026"], [1]),
-        row(["", "", "", "2025-10-12", "2026"], [0]),
-        row(["", "", "", "2025-10-13", "2026"], [7]),
-        row(["", "", "", "2025-10-14", "2026"], [9]),
         // Operational-only row-kinds — added to the SHARED cube 2026-09-13/14
         // for the Operational widget, but present in every widget's data
         // since all three bind to the same model. Added here 2026-09-14 as
@@ -476,23 +453,20 @@
             }
             .progress-fill { height: 100%; border-radius: 4px; background: var(--accent); }
 
-            /* ---- Timeline — day-by-day table + cumulative pace tracker,
-               replaced the grouped bar chart 2026-09-15, per Blair (emulating
-               a spreadsheet mockup he shared): a leading "Cumulative Tally
-               Tracker" summary (running total/pct for 2027, the matching
-               cumulative pct from 2026 at the same point, and an On Track /
-               Watch / Act status) followed by a day-by-day table (count and
-               each year's own per-day % of that year's total). ---- */
+            /* ---- Timeline — day-by-day table + cumulative tracker.
+               Reworked 2026-09-16, per Blair: ACTDATE can't support genuine
+               day-by-day association for 2026 data (unreliable/sparse), so
+               the 2026 series was removed entirely — 2027-only now. The
+               On Track/Watch/Act status is also gone; it compared against
+               the same unreliable 2026 numerator. The fixed, zero-filled
+               10/1-10/14 window design stays, since that part was never
+               dependent on 2026 data. ---- */
             .cum-tracker { background: var(--surface-2); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
             .cum-tracker-title { font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-soft); margin-bottom: 10px; }
             .cum-tracker-row { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
             .cum-stat { display: flex; flex-direction: column; gap: 2px; }
             .cum-stat-label { font-size: 10px; color: var(--text-soft); white-space: nowrap; }
             .cum-stat-value { font-size: 20px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
-            .cum-status { margin-left: auto; font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 100px; white-space: nowrap; }
-            .cum-status.on-track { color: var(--success); background: var(--success-bg); }
-            .cum-status.watch { color: var(--warning); background: var(--warning-bg); }
-            .cum-status.act { color: var(--danger); background: var(--danger-bg); }
 
             .timeline-table-wrap { overflow-x: auto; }
             .timeline-table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
@@ -722,12 +696,11 @@
             const bySynod = {};
             const bySynodNames = {}; // groupKey -> Set of raw sub-region names rolled into it, for hover tooltips
             const byStatus = {}; // added 2026-09-10 — granular Not Started/In Progress/Abandoned/Needs Follow-up breakdown
-            const rawDatesByYear = { "2027": {}, "2026": {} }; // rebuilt 2026-09-15 (was byDateYear, keyed
-                                    // directly by "MM-DD") — now keyed by plan-year tag, then the full
-                                    // "YYYY-MM-DD", so _fixedWindowCounts() can anchor each year to its own
-                                    // real calendar year and clip/zero-fill to the fixed 10/1-10/14 AE window
-                                    // rather than trusting whatever dates happen to appear in the data. See
-                                    // BUILD_PLAN_VWEMPLOYERSAVES.md, "Timeline — YoY comparison".
+            const rawDates = {}; // simplified back to single-series 2026-09-16 (was rawDatesByYear) — the
+                                    // 2026 side was removed entirely, see BUILD_PLAN_VWEMPLOYERSAVES.md,
+                                    // "Reversal: 2026 day-by-day Timeline data is not usable". Keyed by full
+                                    // "YYYY-MM-DD" so _fixedWindowCounts() can anchor to the real calendar
+                                    // year and clip/zero-fill to the fixed 10/1-10/14 AE window.
             const byHealthPlan = {}; // added 2026-09-11 — keyed by Year ("2026"/"2027"), then bucket name
             const byHsaBucket = {}; // added 2026-09-11 — "HSA Annual - Elected 0/>0" / "HSA One Time - Elected 0/>0"
             const byEligibleCount = {}; // added 2026-09-11 — keyed by Year ("2026"/"2027")
@@ -743,14 +716,13 @@
                 const employeeCount = this._measure(r, 1);
 
                 if (date) {
+                    // Defensive: skip any date row not tagged 2027 (or
+                    // untagged, for safety against an older cube deploy) —
+                    // in case a not-yet-redeployed cube still emits the
+                    // retired 2026 Timeline block somewhere mid-rollout.
+                    if (year && year !== "2027") return;
                     const iso = this._normalizeDateKey(date);
-                    // Defaults to 2027 for safety if an older, un-tagged cube
-                    // deploy is still live (Enrollment_Year used to be NULL
-                    // on this row-kind) — matches the single-series behavior
-                    // this replaced.
-                    const y = year || "2027";
-                    if (!rawDatesByYear[y]) rawDatesByYear[y] = {};
-                    rawDatesByYear[y][iso] = (rawDatesByYear[y][iso] || 0) + employerCount;
+                    rawDates[iso] = (rawDates[iso] || 0) + employerCount;
                     return; // timeline rows don't count toward status/election/YoY totals
                 }
 
@@ -824,13 +796,13 @@
             // header comment) — always exactly 14 entries, in order,
             // regardless of which days actually had completions or whether
             // any stray out-of-window dates showed up in the bound data.
-            const fixed2027 = this._fixedWindowCounts(rawDatesByYear["2027"] || {});
-            const fixed2026 = this._fixedWindowCounts(rawDatesByYear["2026"] || {});
+            // 2027-only since 2026-09-16 — see BUILD_PLAN doc.
+            const fixed = this._fixedWindowCounts(rawDates);
             const daily = [];
             for (let i = 0; i < this.constructor.AE_WINDOW_LENGTH_DAYS; i++) {
                 const dd = String(this.constructor.AE_WINDOW_START_DAY + i).padStart(2, "0");
                 const mmdd = `${this.constructor.AE_WINDOW_MONTH}-${dd}`;
-                daily.push({ mmdd, y2026: fixed2026[mmdd] || 0, y2027: fixed2027[mmdd] || 0 });
+                daily.push({ mmdd, count: fixed[mmdd] || 0 });
             }
             return {
                 totalSetUp, completed, defaulted, open, pctComplete,
@@ -1042,20 +1014,17 @@
             }
             root.getElementById("yoyBreakdown").innerHTML = this._statRowsHtml(yoyEntries, "No YoY data bound yet");
 
-            // Timeline — day-by-day table + cumulative pace tracker.
-            // 2026's total comes from summing the Bucket row-kind's
-            // per-employer counts (already in byHealthPlan["2026"] — the
-            // same data the YoY panel above uses) rather than a new cube
-            // measure, since it's already fully available.
+            // Timeline — day-by-day table + cumulative tracker, 2027-only
+            // since 2026-09-16 (ACTDATE can't support day-by-day for 2026 —
+            // see BUILD_PLAN doc). total2027 is the only denominator needed
+            // now.
             const total2027 = status.totalSetUp;
-            const total2026 = Object.values(status.byHealthPlan["2026"] || {}).reduce((a, b) => a + b, 0);
-            this._renderTimeline(root.getElementById("timelineChart"), daily, total2027, total2026);
+            this._renderTimeline(root.getElementById("timelineChart"), daily, total2027);
 
             // Title's date range is computed from the actual data instead of
             // a hardcoded "(10/1 – 10/14)" — added 2026-09-12, once real
             // Completed_Date values (which don't follow that mock window at
-            // all) started arriving. Uses "MM-DD" keys now (2026-09-14, YoY
-            // rework) — mmdd is already year-agnostic, so no split needed.
+            // all) started arriving.
             const titleEl = root.getElementById("timelineTitle");
             if (daily.length) {
                 const fmt = (mmdd) => { const [m, d] = mmdd.split("-"); return `${Number(m)}/${Number(d)}`; };
@@ -1065,49 +1034,32 @@
             }
         }
 
-        // Compares this year's cumulative completion rate to last year's at
-        // the same point in the election window and returns a pace status.
-        // Thresholds inferred from Blair's mockup examples (40% vs 35% =
-        // "On Track", 40% vs 42% = "Watch", 40% vs 50% = "Act") — not an
-        // externally-confirmed business rule, easy to adjust if the real
-        // thresholds should differ.
-        _paceStatus(deltaPct) {
-            if (deltaPct >= 0) return { label: "On Track", cls: "on-track" };
-            if (deltaPct >= -5) return { label: "Watch", cls: "watch" };
-            return { label: "Act", cls: "act" };
-        }
-
-        // Day-by-day table + leading cumulative pace tracker — replaced the
-        // grouped bar chart 2026-09-15, per Blair, emulating a spreadsheet
-        // mockup he shared. Day-by-day rows show each year's own per-day %
-        // of that year's total (not cumulative) — matches the mockup, where
-        // each day's % is independent (e.g. Day 2: 1000/20% vs Day 5:
-        // 2000/40%, both against a fixed total, not running sums). The
-        // Cumulative Tally Tracker above the table is the only place a
-        // running total appears, since that's what the On Track/Watch/Act
-        // pace comparison needs.
-        _renderTimeline(container, daily, total2027, total2026) {
+        // Day-by-day table + leading cumulative tracker — reworked
+        // 2026-09-16 to drop the 2026 series entirely (see BUILD_PLAN doc,
+        // "Reversal: 2026 day-by-day Timeline data is not usable" — ACTDATE
+        // can't support genuine day-by-day association, and the tracker's
+        // old "% Completed 2026" stat was dividing an undercounted,
+        // date-filtered numerator by an unrelated total, likely making 2026
+        // look worse than it was). Kept: the fixed 10/1-10/14 window design,
+        // and Count/% Completed 2027 — both fully sound on their own.
+        _renderTimeline(container, daily, total2027) {
             if (!daily.length) {
                 container.innerHTML = `<div class="empty-row">No timeline data bound yet</div>`;
                 return;
             }
 
-            let cum2027 = 0, cum2026 = 0;
+            let cum2027 = 0;
             const rows = daily.map((d, i) => {
-                cum2027 += d.y2027;
-                cum2026 += d.y2026;
+                cum2027 += d.count;
                 return {
                     dayLabel: `AE Day ${i + 1}`,
                     mmdd: d.mmdd,
-                    count2027: d.y2027,
-                    pct2027: total2027 ? (d.y2027 / total2027) * 100 : 0,
-                    pct2026: total2026 ? (d.y2026 / total2026) * 100 : 0,
+                    count2027: d.count,
+                    pct2027: total2027 ? (d.count / total2027) * 100 : 0,
                 };
             });
 
             const cumPct2027 = total2027 ? (cum2027 / total2027) * 100 : 0;
-            const cumPct2026 = total2026 ? (cum2026 / total2026) * 100 : 0;
-            const pace = this._paceStatus(cumPct2027 - cumPct2026);
 
             const tracker = `
                 <div class="cum-tracker">
@@ -1121,11 +1073,6 @@
                             <div class="cum-stat-label">% Completed 2027</div>
                             <div class="cum-stat-value">${this._formatPct(cumPct2027)}</div>
                         </div>
-                        <div class="cum-stat">
-                            <div class="cum-stat-label">% Completed 2026</div>
-                            <div class="cum-stat-value">${this._formatPct(cumPct2026)}</div>
-                        </div>
-                        <div class="cum-status ${pace.cls}">${pace.label}</div>
                     </div>
                 </div>`;
 
@@ -1134,14 +1081,13 @@
                     <td>${r.dayLabel}</td>
                     <td>${r.count2027.toLocaleString()}</td>
                     <td>${this._formatPct(r.pct2027)}</td>
-                    <td>${this._formatPct(r.pct2026)}</td>
                 </tr>`).join("");
 
             const table = `
                 <div class="timeline-table-wrap">
                     <table class="timeline-table">
                         <thead>
-                            <tr><th>Day</th><th>Count Completed 2027</th><th>% Completed 2027</th><th>% Completed 2026</th></tr>
+                            <tr><th>Day</th><th>Count Completed 2027</th><th>% Completed 2027</th></tr>
                         </thead>
                         <tbody>${tableRows}</tbody>
                     </table>
