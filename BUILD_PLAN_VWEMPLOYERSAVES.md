@@ -1887,3 +1887,50 @@ re-registered on v1.0.16, Dimensions/Measures rebound
 the Employer Selection tiles now show correct numbers. Issue 1 (the
 900 identically-timestamped "completions") remains open separately —
 see above.
+
+## Timeline — day-by-day table + cumulative pace tracker, done 2026-09-15
+
+Blair shared a spreadsheet mockup: a day-by-day table (`Count Completed
+2027` / `% Completed 2027` / `% Completed 2026`, one row per `AE Day N`)
+led by a "Cumulative Tally Tracker" summary — running totals for both
+years plus an **On Track / Watch / Act** status comparing this year's
+cumulative pace to last year's at the same point. Replaces the grouped
+bar chart entirely (same widget, same `#timelineChart` container).
+
+**Design decisions made, not all externally confirmed:**
+- **Day-by-day % is per-day, not cumulative** — each day's own count as
+  a % of that year's own total population, matching the mockup exactly
+  (e.g. Day 5: 2000/40% and Day 3: 200/4% are independent figures
+  against a fixed denominator, not running sums). The **cumulative**
+  running total only appears in the tracker card above the table.
+- **2026's total population** — no existing cube measure for "total
+  2026 employers" existed, so this reuses data already available:
+  summing `byHealthPlan["2026"]` (the Bucket row-kind, same data the
+  YoY panel above already uses) gives the full 2026 population without
+  needing new SQL. **2027's total** is `status.totalSetUp`, already
+  computed.
+- **On Track / Watch / Act thresholds — inferred from Blair's mockup
+  examples, not confirmed as an actual business rule:** 40% vs 35% =
+  On Track, 40% vs 42% = Watch, 40% vs 50% = Act. Implemented as
+  `delta = pct2027 - pct2026`: `delta >= 0` → On Track (green),
+  `-5% <= delta < 0%` → Watch (amber), `delta < -5%` → Act (red). Easy
+  to retune (`_paceStatus()`) if the real thresholds should differ —
+  flag this to Blair if it comes up.
+
+**Built and verified in the Browser pane, 2026-09-15.** Also had to
+rescale the mock Timeline data — the old bar-chart-era mock values
+(designed only to look varied as bars) summed to far more than the
+mock's own total population, so the new cumulative % showed over 100%.
+Rescaled both years' daily mock values down to sums that stay under
+their respective totals (2027: 101 of 143 = 71%; 2026: 70 of 101 =
+70%), landing on a realistic "On Track" demo state. Verified: 14 rows,
+correct per-day and cumulative percentages, `On Track` status renders
+with the right color, no console errors, no regressions to the KPI
+tiles or HSA panel. Pushed `sac-ae-snap-report-widget` v1.0.17
+(`sha384-N6FmQiua2md936q//lE50W1ps9l9NapPvlHTsdJ8Ozu9mt7lCjVJ0FkcNf1mfWjS`).
+
+**Not done:** re-registering the widget in SAC to pick up v1.0.17 on
+live data, and confirming the day-by-day table and pace status look
+right against real numbers — worth double-checking the On Track/Watch/
+Act thresholds specifically once real data is behind it, since those
+were inferred from a mockup, not confirmed.
