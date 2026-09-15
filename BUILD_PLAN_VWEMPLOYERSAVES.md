@@ -2133,3 +2133,22 @@ Pushed `sac-ae-operational-widget` v1.0.4
 **Not yet done:** deploying the rescaled Stalled Time bucket SQL (see
 section above — same cube redeploy covers both changes), and
 re-registering `sac-ae-operational-widget` in SAC to pick up v1.0.4.
+
+## Operational's "As of" fixed too, with date AND time — 2026-09-16
+
+Same fix as Snap Report's (see "Header cleanup" above), ported to
+`sac-ae-operational-widget` — "As of" was showing the literal word
+`"Live"` instead of an actual timestamp. **Difference from Snap
+Report's version: shows date *and* time here**, not date-only — per
+Blair, since this is the working-team/operational dashboard, checked
+throughout the day rather than once. `new Date().toLocaleString(...)`,
+computed by the widget itself; `asOfLabel` property no longer read.
+
+Verified in the Browser pane (fresh tab): `As of: September 15, 2026
+at 2:28 PM`, no console errors. Pushed `sac-ae-operational-widget`
+v1.0.5
+(`sha384-VE0+Ooa6jIwh7V4TvYaQLJPoe2P28XfyCZLxlr9fCVuTIKnG42U00BLHqvc3Gwjc`).
+
+**Not yet done:** re-registering the widget in SAC to pick up v1.0.5
+(can be done in the same delete-recreate pass as v1.0.4, if that
+hasn't happened yet).
