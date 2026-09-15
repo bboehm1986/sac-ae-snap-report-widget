@@ -2045,3 +2045,16 @@ tiles row down to 4, no console errors. Pushed
 (`sha384-3W6VXr/qgn058epFQeeKetXJfmpVOTLb5ZWcr8+Bungeidlu6JJLbyxC6NniNVj4`).
 
 **Not yet done:** re-registering the widget in SAC to pick up v1.0.21.
+
+**v1.0.21 failed to load in SAC, 2026-09-16** — identical symptom to
+the v1.0.17 incident above: generic "couldn't load the custom widget"
+error, fresh Correlation ID. Same diagnostic re-run, same result: hash
+match, correct CORS/content-type headers, zero console errors
+executing it fresh in a browser. **This is now the second confirmed
+occurrence of this SAC-side flakiness** — worth treating as a known,
+recurring quirk of this widget's registration process going forward
+(not necessarily a one-off), rather than re-investigating from
+scratch each time. Same proven fix applied: identical content
+republished under a fresh version number, **v1.0.22** (same hash as
+v1.0.21:
+`sha384-3W6VXr/qgn058epFQeeKetXJfmpVOTLb5ZWcr8+Bungeidlu6JJLbyxC6NniNVj4`).
