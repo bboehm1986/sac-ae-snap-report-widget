@@ -2021,3 +2021,27 @@ on live data. Worth specifically checking whether the still-open Issue
 1 anomaly (dated outside the 10/1-10/14 window) is now correctly
 excluded from the live Timeline, as one more confirmation this fix
 works against the real data it was built to guard against.
+
+## Header cleanup: real "As of" date, dropped redundant tile — 2026-09-16
+
+Two small fixes, per Blair, looking at live data:
+1. **"As of" was showing the literal word `"Live"`** — whatever the
+   Story's `asOfLabel` property happened to be manually set to, not an
+   actual date. Now computed by the widget itself from the viewer's own
+   clock (`new Date().toLocaleDateString(...)`, no arguments — this is
+   safe, unlike the date-*string*-parsing risk documented elsewhere in
+   this file for Timeline labels, which is a different operation
+   entirely) — always shows the real current date, e.g. "As of:
+   September 15, 2026". The `asOfLabel` property is no longer read;
+   still declared in `widget.json` for manifest compatibility, same
+   deprecation pattern as `dailyCounts`/`yoyComparison`.
+2. **Removed the "% Complete" tile** — redundant with `Completed`'s own
+   "X% of total" subtext. Employer Selection is now 4 tiles (Total Set
+   Up, Completed, Non-Completed, Defaulted (running)), not 5.
+
+Verified in the Browser pane: `asof` element shows today's real date,
+tiles row down to 4, no console errors. Pushed
+`sac-ae-snap-report-widget` v1.0.21
+(`sha384-3W6VXr/qgn058epFQeeKetXJfmpVOTLb5ZWcr8+Bungeidlu6JJLbyxC6NniNVj4`).
+
+**Not yet done:** re-registering the widget in SAC to pick up v1.0.21.

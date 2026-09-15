@@ -926,13 +926,19 @@
             const daily = status.daily; // now rides inside employerStatus — see _parseEmployerStatus()
 
             // "Live"/"2 Open Items" language dropped 2026-09-14, per Blair —
-            // unhelpful on a leadership-facing dashboard. The badge now only
-            // ever warns about mock/preview data; it simply doesn't render
-            // once real data is bound, rather than announcing "Live".
-            const asOfLabel = this._props.asOfLabel || "";
+            // unhelpful on a leadership-facing dashboard.
+            // Changed 2026-09-16, also per Blair: "As of" was showing the
+            // literal word "Live" (whatever the Story's asOfLabel property
+            // happened to be set to) instead of an actual date. Now computed
+            // by the widget itself from the viewer's own clock — safe to use
+            // new Date() with no arguments here (just "what day is it right
+            // now"), unlike the date-STRING-parsing risk documented
+            // elsewhere in this file for Timeline labels, which is a
+            // different operation entirely. The asOfLabel property is no
+            // longer read.
             const asOfEl = root.getElementById("asof");
-            asOfEl.textContent = asOfLabel ? "As of: " + asOfLabel : "";
-            asOfEl.hidden = !asOfLabel;
+            asOfEl.textContent = "As of: " + new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+            asOfEl.hidden = false;
             const dataBadgeEl = root.getElementById("dataBadge");
             dataBadgeEl.textContent = "Mock Data — Preview";
             dataBadgeEl.hidden = !this._usingMockData;
@@ -942,10 +948,11 @@
             // shows "0.3%" instead of Math.round() collapsing it to "0%".
             const pctOpen = status.totalSetUp ? (status.open / status.totalSetUp) * 100 : 0;
             const pctDefaulted = status.totalSetUp ? (status.defaulted / status.totalSetUp) * 100 : 0;
+            // "% Complete" tile removed 2026-09-16, per Blair — redundant
+            // with Completed's own "X% of total" subtext.
             const tilesHtml = [
                 this._tileHtml("Total Set Up", status.totalSetUp, "in current filter", 100, "accent"),
                 this._tileHtml("Completed", status.completed, this._formatPct(status.pctComplete) + " of total", status.pctComplete, "success"),
-                this._tileHtml("% Complete", this._formatPct(status.pctComplete), "of total set up", status.pctComplete, "accent"),
                 this._tileHtml("Non-Completed", status.open, this._formatPct(pctOpen) + " of total", pctOpen, "warning"),
                 this._tileHtml("Defaulted (running)", status.defaulted, this._formatPct(pctDefaulted) + " of total", pctDefaulted, "danger"),
             ].join("");
