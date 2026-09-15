@@ -522,6 +522,7 @@ Time fields all included:**
 SELECT
     a."EmployerNumber"     AS "Employer_Number",
     de."EMPRNAME"          AS "Employer_Name",
+    a."EmployerNumber" || ' - ' || COALESCE(de."EMPRNAME", '(Unknown Employer)') AS "Employer_Display_Name",
     de."RegionSynodName"   AS "Synod_Region",
     CASE a."ResultCode"
         WHEN 'S'  THEN 'Success'
@@ -2152,3 +2153,47 @@ v1.0.5
 **Not yet done:** re-registering the widget in SAC to pick up v1.0.5
 (can be done in the same delete-recreate pass as v1.0.4, if that
 hasn't happened yet).
+
+## New Gold column: `Employer_Display_Name` — 2026-09-16
+
+Blair: build a concatenated `Employer_Number - Employer_Name` column
+in Gold — intended (per the Input Controls conversation this same day)
+to eventually disambiguate same-named employers in the Drill-Down
+widget's Input Control, though **scoped to Gold only for now** — not
+wiring it into `GLD_AE_Employer_Enrollment_YoY` or the Input Control
+itself yet, per Blair.
+
+```sql
+a."EmployerNumber" || ' - ' || COALESCE(de."EMPRNAME", '(Unknown Employer)') AS "Employer_Display_Name"
+```
+
+Added right after `Employer_Name` in `GLD_AE_Employer_Enrollment`'s
+SELECT list — full updated Gold SQL is in the "Gold SQL" section above,
+this is a live edit to that same authoritative block, not a separate
+copy. `COALESCE`-guards the `vDimEmployer` side only (`Employer_Number`
+can't be null — it's the partition/join key); the ~3 employers with no
+`vDimEmployer` match (see "Business Name mislabeling" investigation
+elsewhere in this doc) get `"12345 - (Unknown Employer)"` instead of a
+null concatenation.
+
+**Status: written, not yet deployed.**
+
+**Not yet done (deliberately deferred, per Blair):**
+- Adding a matching `Employer_Display_Name` column to
+  `GLD_AE_Employer_Enrollment_YoY` (that view selects specific columns
+  from Gold, not `SELECT *`, so this new column won't reach it
+  automatically).
+- Rebuilding/refreshing `AM_EMPLOYER_ENROLLMENT_YOY` to expose it —
+  same caution as every other Analytic Model change on this project:
+  check whether it needs a delete-and-recreate to pick up a new source
+  column, same as happened when it was first built after the Business
+  Name rename.
+- Repointing the Drill-Down widget's planned Input Control at this
+  field instead of plain `Employer_Name`.
+- Watching for the same Business-Name-inheritance quirk this project
+  already hit once (`Comment`/`CONTRIBUTIONSET`) — `Employer_Display_
+  Name` is a genuinely computed `||` expression (not a bare passthrough
+  of a single source column), so per that same investigation's
+  findings it should get a fresh Business Name matching this alias
+  automatically, the same way `Eligible_Band` did — but verify once
+  deployed rather than assume.
