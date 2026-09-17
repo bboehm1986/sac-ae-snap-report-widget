@@ -102,8 +102,7 @@
     // real Enrollment_Status vocabulary (was still on AE_Employer Election's
     // original BR-1 vocabulary, which never matched anything from our real
     // source — Completed/Non-Completed silently showed 0 regardless of data) ----
-    const COMPLETED_STATUSES = ["Success"];
-    const DEFAULTED_STATUSES = []; // no real "Defaulted" status value exists yet — see BUILD_PLAN_VWEMPLOYERSAVES.md, "Not in this build"
+    const COMPLETED_STATUSES = ["Success"]; // still used for the Synod/Region panel's per-region completion rate — a different, coarser concept than the Completed/Defaulted tiles below (see Election_Status)
     const OPEN_STATUSES = ["Abandoned", "Not Started", "In Progress", "Needs Follow-up"];
 
     // Election_Status — added 2026-09-17, sourced from GLD_AE_Employer_
@@ -165,12 +164,16 @@
         // Eligible Count YoY — added 2026-09-11, from vEmployerEligibleCount.
         row(["", "", "Eligible Count", "", "2026"], [null, 1240]),
         row(["", "", "Eligible Count", "", "2027"], [null, 1310]),
-        // Election_Status breakdown — added 2026-09-17.
-        row(["", "", "Open", "", ""], [16]),
-        row(["", "", "Completed EL", "", ""], [58]),
-        row(["", "", "Completed OTP", "", ""], [12]),
-        row(["", "", "Default", "", ""], [3]),
-        row(["", "", "Default Override", "", ""], [1]),
+        // Election_Status breakdown — added 2026-09-17. Reconciled against
+        // the status rows above: Open (36) matches the Non-Completed tile
+        // exactly (same population, two different derivations), and the
+        // four "Success" sub-values sum to 107, matching Completed's old
+        // total before it was redefined to exclude defaults.
+        row(["", "", "Open", "", ""], [36]),
+        row(["", "", "Completed EL", "", ""], [90]),
+        row(["", "", "Completed OTP", "", ""], [10]),
+        row(["", "", "Default", "", ""], [5]),
+        row(["", "", "Default Override", "", ""], [2]),
         // Timeline data — folded into this same binding 2026-09-10 (was
         // MOCK_DAILY_COUNTS/dailyCounts, see header comment "Why one binding").
         // 2027-only since 2026-09-16 — the 2026 series was removed
@@ -620,7 +623,6 @@
 
         _statusBucket(status) {
             if (COMPLETED_STATUSES.includes(status)) return "Completed";
-            if (DEFAULTED_STATUSES.includes(status)) return "Defaulted";
             if (OPEN_STATUSES.includes(status)) return "Open";
             return null; // Cancelled / Undetermined — excluded from bucketed totals
         }
@@ -726,7 +728,7 @@
             const byHsaBucket = {}; // added 2026-09-11 — "HSA Annual - Elected 0/>0" / "HSA One Time - Elected 0/>0"
             const byEligibleCount = {}; // added 2026-09-11 — keyed by Year ("2026"/"2027")
             const byElectionStatus = {}; // added 2026-09-17 — Open/Completed EL/Completed OTP/Default/Default Override
-            let totalSetUp = 0, completed = 0, defaulted = 0, open = 0;
+            let totalSetUp = 0, open = 0;
 
             rows.forEach((r) => {
                 const status = this._dim(r, 0);
@@ -792,9 +794,7 @@
                 const bucket = this._statusBucket(status);
 
                 totalSetUp += employerCount;
-                if (bucket === "Completed") completed += employerCount;
-                else if (bucket === "Defaulted") defaulted += employerCount;
-                else if (bucket === "Open") open += employerCount;
+                if (bucket === "Open") open += employerCount;
 
                 if (synod) {
                     // Collapsed 2026-09-12, per Blair: group at the top-level
@@ -814,10 +814,6 @@
                 }
             });
 
-            // Kept as a raw (unrounded) percentage — rounding happens only at
-            // display time via _formatPct(), so a genuinely small-but-nonzero
-            // rate doesn't get collapsed down to a misleading "0%".
-            const pctComplete = totalSetUp ? (completed / totalSetUp) * 100 : 0;
             // Fixed, zero-filled 10/1-10/14 window (see _fixedWindowCounts
             // header comment) — always exactly 14 entries, in order,
             // regardless of which days actually had completions or whether
@@ -831,7 +827,7 @@
                 daily.push({ mmdd, count: fixed[mmdd] || 0 });
             }
             return {
-                totalSetUp, completed, defaulted, open, pctComplete,
+                totalSetUp, open,
                 bySynod, bySynodNames, daily,
                 byElectionType: byHealthPlan["2027"] || {}, // current-year bucket, same data the "Of Complete" panel always showed
                 byHealthPlan, byHsaBucket, byEligibleCount, byElectionStatus,
@@ -944,15 +940,30 @@
             // Employer Selection tiles — percentages formatted via
             // _formatPct() (2026-09-12) so a small-but-real rate like 17/4991
             // shows "0.3%" instead of Math.round() collapsing it to "0%".
-            const pctOpen = status.totalSetUp ? (status.open / status.totalSetUp) * 100 : 0;
-            const pctDefaulted = status.totalSetUp ? (status.defaulted / status.totalSetUp) * 100 : 0;
             // "% Complete" tile removed 2026-09-16, per Blair — redundant
             // with Completed's own "X% of total" subtext.
+            // Completed/Defaulted redefined 2026-09-17, per Blair (Option A):
+            // now mutually exclusive, driven by Election_Status instead of
+            // Enrollment_Status = Success. Before this, "Completed" silently
+            // included every Default/Default Override employer too (all four
+            // Election_Status "Success" sub-values summed to exactly the old
+            // Completed count) — Defaulted showed 0 the entire life of this
+            // project, since DEFAULTED_STATUSES had no real value to check
+            // against until Election_Status existed. Completed now means
+            // "actively completed by someone" (Completed EL + Completed
+            // OTP); Defaulted now means "closed automatically, not by
+            // action" (Default + Default Override) — matching what the tile
+            // labels actually claim.
+            const pctOpen = status.totalSetUp ? (status.open / status.totalSetUp) * 100 : 0;
+            const completedCount = (status.byElectionStatus["Completed EL"] || 0) + (status.byElectionStatus["Completed OTP"] || 0);
+            const defaultedCount = (status.byElectionStatus["Default"] || 0) + (status.byElectionStatus["Default Override"] || 0);
+            const pctCompleted = status.totalSetUp ? (completedCount / status.totalSetUp) * 100 : 0;
+            const pctDefaulted = status.totalSetUp ? (defaultedCount / status.totalSetUp) * 100 : 0;
             const tilesHtml = [
                 this._tileHtml("Total Set Up", status.totalSetUp, "in current filter", 100, "accent"),
-                this._tileHtml("Completed", status.completed, this._formatPct(status.pctComplete) + " of total", status.pctComplete, "success"),
+                this._tileHtml("Completed", completedCount, this._formatPct(pctCompleted) + " of total", pctCompleted, "success"),
                 this._tileHtml("Non-Completed", status.open, this._formatPct(pctOpen) + " of total", pctOpen, "warning"),
-                this._tileHtml("Defaulted (running)", status.defaulted, this._formatPct(pctDefaulted) + " of total", pctDefaulted, "danger"),
+                this._tileHtml("Defaulted (running)", defaultedCount, this._formatPct(pctDefaulted) + " of total", pctDefaulted, "danger"),
             ].join("");
             root.getElementById("employerTiles").innerHTML = tilesHtml;
 
