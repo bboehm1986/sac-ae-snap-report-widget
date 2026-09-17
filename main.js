@@ -36,6 +36,13 @@
                                 into one One Time bucket)
                               - "Eligible Count" — employer eligible-
                                 headcount YoY, from vEmployerEligibleCount
+                              - one of the 5 Election_Status values ("Open"
+                                / "Completed EL" / "Completed OTP" /
+                                "Default" / "Default Override") — added
+                                2026-09-17, matched by value against this
+                                closed vocabulary, same disambiguation
+                                approach as the "HSA "-prefix and "Eligible
+                                Count" row-kinds above
                               - "" for plain status/synod or timeline rows
             dimensions_3 = Date (Completed_Date for 2027 / ACTDATE for
                             2026; "" for all other row-kinds) — Timeline
@@ -99,6 +106,15 @@
     const DEFAULTED_STATUSES = []; // no real "Defaulted" status value exists yet — see BUILD_PLAN_VWEMPLOYERSAVES.md, "Not in this build"
     const OPEN_STATUSES = ["Abandoned", "Not Started", "In Progress", "Needs Follow-up"];
 
+    // Election_Status — added 2026-09-17, sourced from GLD_AE_Employer_
+    // Enrollment's new column (ProcessedBy/SubmittedOn-derived, see
+    // BUILD_PLAN_VWEMPLOYERSAVES.md). Only differentiates WITHIN
+    // Enrollment_Status = Success (Open covers everything else
+    // undifferentiated) — a genuinely different concept than
+    // Enrollment_Status, not a replacement for it. Fixed display order,
+    // matching the legacy report this was built to reconcile against.
+    const ELECTION_STATUS_ORDER = ["Open", "Completed EL", "Completed OTP", "Default", "Default Override"];
+
     // ---- Mock data (mirrors the real SAC ResultSet row shape) ----
     function row(dims, measures) {
         const out = {};
@@ -149,6 +165,12 @@
         // Eligible Count YoY — added 2026-09-11, from vEmployerEligibleCount.
         row(["", "", "Eligible Count", "", "2026"], [null, 1240]),
         row(["", "", "Eligible Count", "", "2027"], [null, 1310]),
+        // Election_Status breakdown — added 2026-09-17.
+        row(["", "", "Open", "", ""], [16]),
+        row(["", "", "Completed EL", "", ""], [58]),
+        row(["", "", "Completed OTP", "", ""], [12]),
+        row(["", "", "Default", "", ""], [3]),
+        row(["", "", "Default Override", "", ""], [1]),
         // Timeline data — folded into this same binding 2026-09-10 (was
         // MOCK_DAILY_COUNTS/dailyCounts, see header comment "Why one binding").
         // 2027-only since 2026-09-16 — the 2026 series was removed
@@ -500,8 +522,8 @@
                     <div id="electionBreakdown"></div>
                 </div>
                 <div class="panel">
-                    <div class="section-title" style="margin-top:0;">Non-Completed — By Status</div>
-                    <div class="panel-caption" style="margin-top:-4px;">Employers not yet completed, by current status</div>
+                    <div class="section-title" style="margin-top:0;">By Election Status</div>
+                    <div class="panel-caption" style="margin-top:-4px;">All employers, by election status</div>
                     <div id="statusBreakdown"></div>
                 </div>
                 <div class="panel">
@@ -695,7 +717,6 @@
             const rows = (this._employerStatus && this._employerStatus.data) || [];
             const bySynod = {};
             const bySynodNames = {}; // groupKey -> Set of raw sub-region names rolled into it, for hover tooltips
-            const byStatus = {}; // added 2026-09-10 — granular Not Started/In Progress/Abandoned/Needs Follow-up breakdown
             const rawDates = {}; // simplified back to single-series 2026-09-16 (was rawDatesByYear) — the
                                     // 2026 side was removed entirely, see BUILD_PLAN_VWEMPLOYERSAVES.md,
                                     // "Reversal: 2026 day-by-day Timeline data is not usable". Keyed by full
@@ -704,6 +725,7 @@
             const byHealthPlan = {}; // added 2026-09-11 — keyed by Year ("2026"/"2027"), then bucket name
             const byHsaBucket = {}; // added 2026-09-11 — "HSA Annual - Elected 0/>0" / "HSA One Time - Elected 0/>0"
             const byEligibleCount = {}; // added 2026-09-11 — keyed by Year ("2026"/"2027")
+            const byElectionStatus = {}; // added 2026-09-17 — Open/Completed EL/Completed OTP/Default/Default Override
             let totalSetUp = 0, completed = 0, defaulted = 0, open = 0;
 
             rows.forEach((r) => {
@@ -729,6 +751,11 @@
                 if (subType === "Eligible Count") {
                     // measures_1 is repurposed to carry SUM(EligibleCount) on this row-kind, see header comment
                     byEligibleCount[year] = (byEligibleCount[year] || 0) + employeeCount;
+                    return;
+                }
+
+                if (ELECTION_STATUS_ORDER.includes(subType)) {
+                    byElectionStatus[subType] = (byElectionStatus[subType] || 0) + employerCount;
                     return;
                 }
 
@@ -769,7 +796,6 @@
                 else if (bucket === "Defaulted") defaulted += employerCount;
                 else if (bucket === "Open") open += employerCount;
 
-                if (bucket === "Open" && status) byStatus[status] = (byStatus[status] || 0) + employerCount;
                 if (synod) {
                     // Collapsed 2026-09-12, per Blair: group at the top-level
                     // synod number only ("Synod 1"), summing across its
@@ -806,9 +832,9 @@
             }
             return {
                 totalSetUp, completed, defaulted, open, pctComplete,
-                bySynod, bySynodNames, byStatus, daily,
+                bySynod, bySynodNames, daily,
                 byElectionType: byHealthPlan["2027"] || {}, // current-year bucket, same data the "Of Complete" panel always showed
-                byHealthPlan, byHsaBucket, byEligibleCount,
+                byHealthPlan, byHsaBucket, byEligibleCount, byElectionStatus,
             };
         }
 
@@ -909,7 +935,7 @@
             // different operation entirely. The asOfLabel property is no
             // longer read.
             const asOfEl = root.getElementById("asof");
-            asOfEl.textContent = "As of: " + new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+            asOfEl.textContent = "As of: " + new Date().toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
             asOfEl.hidden = false;
             const dataBadgeEl = root.getElementById("dataBadge");
             dataBadgeEl.textContent = "Mock Data — Preview";
@@ -934,16 +960,20 @@
             const electionEntries = Object.keys(status.byElectionType).map((t) => ({ name: this._displayBucketName(t), value: status.byElectionType[t] }));
             root.getElementById("electionBreakdown").innerHTML = this._breakdownRowsHtml(electionEntries, "No election sub-type data bound yet");
 
-            // Non-Completed by status (Not Started / In Progress / Abandoned / Needs Follow-up)
-            // Row layout switched to _statRowsHtml() 2026-09-12 — the shared
-            // breakdown-row's narrow .val column wrapped "4934 (100% of non-
-            // completed)" into an unreadable multi-line mess once real data
-            // arrived.
-            const statusEntries = Object.keys(status.byStatus).map((s) => {
-                const pct = status.open ? (status.byStatus[s] / status.open) * 100 : 0;
-                return { name: s, value: Number(status.byStatus[s]).toLocaleString(), sub: `${this._formatPct(pct)} of non-completed` };
+            // By Election Status (Open / Completed EL / Completed OTP / Default /
+            // Default Override) — replaced the old Enrollment_Status-scoped
+            // "Non-Completed — By Status" panel 2026-09-17, per Blair.
+            // Election_Status only differentiates within Enrollment_Status =
+            // Success (Open absorbs everything else undifferentiated), so
+            // scoping this to "non-completed only" would have shown nothing
+            // useful — this panel now covers ALL employers instead, zero-
+            // filled in the legacy report's own fixed column order.
+            const statusEntries = ELECTION_STATUS_ORDER.map((s) => {
+                const count = status.byElectionStatus[s] || 0;
+                const pct = status.totalSetUp ? (count / status.totalSetUp) * 100 : 0;
+                return { name: s, value: count.toLocaleString(), sub: `${this._formatPct(pct)} of total` };
             });
-            root.getElementById("statusBreakdown").innerHTML = this._statRowsHtml(statusEntries, "No status data bound yet");
+            root.getElementById("statusBreakdown").innerHTML = this._statRowsHtml(statusEntries, "No election status data bound yet");
 
             // Synod/Region breakdown — collapsed to top-level synod number
             // only ("Synod 1" instead of separate "1A"/"1B"/.../"1F" rows)

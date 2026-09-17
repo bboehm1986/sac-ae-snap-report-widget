@@ -1,7 +1,7 @@
 {
     "id": "com.porticobenefits.aesnapreport",
     "name": "AE Snap Report",
-    "version": "1.0.23",
+    "version": "1.0.24",
     "vendor": "Portico Benefits",
     "license": "",
     "eula": "",
@@ -13,7 +13,7 @@
             "kind": "main",
             "tag": "com-porticobenefits-aesnapreport",
             "url": "https://bboehm1986.github.io/sac-ae-snap-report-widget/main.js",
-            "integrity": "sha384-2fvi01soRJECEgWT7B+7+6/xA7eCvHBJZqEpwQt/83U1R71ZM3zmKINC2OqFp33d"
+            "integrity": "sha384-M7ez+8flMdjbxX0esaS0DIUwMZ5QBb9EjeblFr0e4rTDUreOvZnT7v/4ob+s6qMa"
         }
     ],
     "properties": {
@@ -35,7 +35,7 @@
             "feeds": [
                 {
                     "id": "dimensions",
-                    "description": "Status / Synod-Region / Election Sub-Type / Date / Year. Timeline rows (Date populated) now carry Year too (2026 or 2027, added 2026-09-14) -- the Timeline renders as a YoY grouped bar chart, two bars per calendar day, one per plan year.",
+                    "description": "Status / Synod-Region / Election Sub-Type / Date / Year. Timeline rows (Date populated) now carry Year too (2026 or 2027, added 2026-09-14) -- the Timeline renders as a YoY grouped bar chart, two bars per calendar day, one per plan year. Election Sub-Type also carries the 5 Election_Status values (Open/Completed EL/Completed OTP/Default/Default Override, added 2026-09-17) for the 'By Election Status' panel -- matched by value against this closed vocabulary, same as the HSA and Eligible Count row-kinds.",
                     "type": "dimension"
                 },
                 {
