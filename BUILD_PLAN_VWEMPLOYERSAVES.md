@@ -3162,3 +3162,20 @@ day 14) is unchanged.
 
 **Status: deployed and confirmed — 2026-09-18.** Snap Report v1.0.33,
 Operational v1.0.13.
+
+## Pacing badge: moved into the Daily Completion Tracker card, same day
+
+Blair wanted the badge more prominent — moved from a small pill next
+to the "Timeline (10/1-10/14)" section title into the Daily Completion
+Tracker card itself, top-right of its own "Daily Completion Tracker"
+title (new `.cum-tracker-header` flex row), at a larger size (new
+`.badge.lg` modifier). The top dashboard header still shows the small
+version next to "Mock Data — Preview" — only the second placement
+changed. `_renderTimeline()` now takes the pacing status as a 4th
+argument and renders the badge inline instead of the caller writing it
+into a separate DOM node. Verified visually (On Track, green,
+top-right of the card) via the same `Date`-override technique in both
+widgets' local `preview.html` before deploy.
+
+**Status: deployed and confirmed — 2026-09-18.** Snap Report v1.0.34,
+Operational v1.0.14.

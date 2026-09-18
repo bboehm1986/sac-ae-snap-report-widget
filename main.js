@@ -333,6 +333,7 @@
             .badge.success { color: var(--success); border-color: rgba(20,151,111,0.35); background: var(--success-bg); }
             .badge.danger { color: var(--danger); border-color: rgba(201,75,75,0.35); background: var(--danger-bg); }
             .badge.pending { color: var(--text-soft); border-color: rgba(23,26,35,0.12); background: var(--surface-2); }
+            .badge.lg { font-size: 13px; font-weight: 700; padding: 6px 16px; }
             .asof { font-size: 11px; color: var(--text-soft); margin-top: 2px; }
 
             /* ---- Section titles ---- */
@@ -344,7 +345,6 @@
                 letter-spacing: 0.05em;
                 margin: 22px 0 8px;
             }
-            .section-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 22px 0 8px; }
             .panel-caption {
                 font-size: 12px;
                 color: var(--text-soft);
@@ -497,7 +497,8 @@
                10/1-10/14 window design stays, since that part was never
                dependent on 2026 data. ---- */
             .cum-tracker { background: var(--surface-2); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
-            .cum-tracker-title { font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-soft); margin-bottom: 10px; }
+            .cum-tracker-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+            .cum-tracker-title { font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-soft); }
             .cum-tracker-row { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
             .cum-stat { display: flex; flex-direction: column; gap: 2px; }
             .cum-stat-label { font-size: 10px; color: var(--text-soft); white-space: nowrap; }
@@ -566,10 +567,7 @@
                 </div>
             </div>
 
-            <div class="section-title-row">
-                <div class="section-title" id="timelineTitle" style="margin:0;">Timeline</div>
-                <span id="pacingBadgeTimeline"></span>
-            </div>
+            <div class="section-title" id="timelineTitle">Timeline</div>
             <div class="panel-caption" id="timelineCaption">Daily and cumulative completions (Completed EL / Completed OTP only)</div>
             <div class="panel">
                 <div id="timelineChart"></div>
@@ -742,12 +740,12 @@
             return { tier, label, expectedPct, actualPct, dayIndex };
         }
 
-        _pacingBadgeHtml(status) {
+        _pacingBadgeHtml(status, { large = false } = {}) {
             if (!status) return "";
             const title = status.dayIndex
                 ? `Day ${status.dayIndex} of 14 — expected ${status.expectedPct.toFixed(1)}% complete, actual ${status.actualPct.toFixed(1)}%`
                 : "AE window opens 10/1";
-            return `<span class="badge ${status.tier}" title="${title}">${status.label}</span>`;
+            return `<span class="badge ${status.tier}${large ? " lg" : ""}" title="${title}">${status.label}</span>`;
         }
 
         // Each plan year's real calendar year isn't known ahead of time —
@@ -1188,14 +1186,16 @@
             // see BUILD_PLAN doc). total2027 is the only denominator needed
             // now.
             const total2027 = status.totalSetUp;
-            this._renderTimeline(root.getElementById("timelineChart"), daily, total2027);
 
-            // Pacing badge — added 2026-09-18, shown both in the top
-            // header and beside the Timeline title (Blair's call).
+            // Pacing badge — added 2026-09-18, originally shown in the top
+            // header and beside the Timeline title; moved 2026-09-18 (same
+            // day) into the Daily Completion Tracker card itself, top-right
+            // of its own title, at a larger size — Blair wanted it more
+            // prominent than a small pill next to a section title. Top
+            // header keeps the small version.
             const pacing = this._pacingStatus(daily, total2027);
-            const pacingHtml = this._pacingBadgeHtml(pacing);
-            root.getElementById("pacingBadgeHeader").innerHTML = pacingHtml;
-            root.getElementById("pacingBadgeTimeline").innerHTML = pacingHtml;
+            root.getElementById("pacingBadgeHeader").innerHTML = this._pacingBadgeHtml(pacing);
+            this._renderTimeline(root.getElementById("timelineChart"), daily, total2027, pacing);
 
             // Title's date range is computed from the actual data instead of
             // a hardcoded "(10/1 – 10/14)" — added 2026-09-12, once real
@@ -1272,7 +1272,7 @@
         // combined into a single chart 2026-09-18, replacing the two
         // stacked charts from earlier the same day. Kept: the fixed
         // 10/1-10/14 window design, and Count/% Completed 2027.
-        _renderTimeline(container, daily, total2027) {
+        _renderTimeline(container, daily, total2027, pacing) {
             if (!daily.length) {
                 container.innerHTML = `<div class="empty-row">No timeline data bound yet</div>`;
                 return;
@@ -1284,7 +1284,10 @@
 
             const tracker = `
                 <div class="cum-tracker">
-                    <div class="cum-tracker-title">Daily Completion Tracker</div>
+                    <div class="cum-tracker-header">
+                        <div class="cum-tracker-title">Daily Completion Tracker</div>
+                        ${this._pacingBadgeHtml(pacing, { large: true })}
+                    </div>
                     <div class="cum-tracker-row">
                         <div class="cum-stat">
                             <div class="cum-stat-label">Count Completed 2027</div>
