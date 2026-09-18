@@ -3110,3 +3110,40 @@ accumulator, just rendered into a second panel instead of appended to
 the first. Verified visually in local `preview.html` before deploy.
 
 **Status: deployed and confirmed — 2026-09-18.** Snap Report v1.0.30.
+
+## Pacing badge (On Track / Needs Attention / At Risk), same day
+
+Blair asked for a badge comparing actual cumulative completion % against
+an expected pacing curve, sourced from a historical send/reminder
+schedule (Email Invite -> Reminder 1/2/3 -> Final Reminder -> Assigned
+Value HDHP default) scaled onto the 14-day 10/1-10/14 AE window. The
+expected-% curve is a **static reference constant**
+(`AE_EXPECTED_PACING`, one value per window day, both widgets) — not
+sourced from Datasphere, since it's a fixed historical benchmark that
+doesn't change year to year:
+```
+[0.0, 5.5, 10.9, 16.4, 21.8, 27.3, 33.1, 39.0, 44.8, 52.1, 59.5, 74.6, 81.1, 87.7]
+```
+`_pacingStatus()` reads the viewer's real "today" (via `new Date()`,
+month/day only — independent of which calendar year the bound Timeline
+data anchors to) to find the AE window day, looks up that day's
+expected %, and compares it to the actual cumulative % already used by
+the Timeline panel. Thresholds confirmed with Blair: On Track within 5
+points of expected or ahead; Needs Attention 5-15 points behind; At
+Risk 15+ points behind. Being ahead of pace never downgrades the badge
+— only falling behind does, so the tracker doesn't turn red just
+because enrollment finished early. Returns no badge before the window
+opens; after it closes, shows a final read against day 14's
+expectation.
+
+Shown in both places per Blair: next to the top dashboard header, and
+again next to the Timeline panel title. Same badge pill styling as the
+existing "Mock Data — Preview" badge, new `success`/`warning`/`danger`
+tier classes added. Verified all three tiers by temporarily overriding
+`Date` in the browser console against each widget's local
+`preview.html` before deploy (today's real date, 2026-09-18, is before
+the window opens, so the badge doesn't show in the live default state
+until October).
+
+**Status: deployed and confirmed — 2026-09-18.** Snap Report v1.0.32,
+Operational v1.0.12.
