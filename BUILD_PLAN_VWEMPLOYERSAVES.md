@@ -3147,3 +3147,18 @@ until October).
 
 **Status: deployed and confirmed — 2026-09-18.** Snap Report v1.0.32,
 Operational v1.0.12.
+
+## Pacing badge: "Pending AE" placeholder, same day
+
+Before the window opens, `_pacingStatus()` returned `null` and the
+badge rendered as nothing — Blair flagged an empty badge reads as
+broken, not as "nothing to show yet." Changed to return a neutral
+`{ tier: "pending", label: "Pending AE" }` status instead of `null`
+in that case; new `.badge.pending` style (gray, `--text-soft` /
+`--surface-2`, no judgment implied). Tooltip reads "AE window opens
+10/1" instead of the day/expected/actual breakdown, since there's
+nothing to compare yet. Window-closed behavior (final read against
+day 14) is unchanged.
+
+**Status: deployed and confirmed — 2026-09-18.** Snap Report v1.0.33,
+Operational v1.0.13.
