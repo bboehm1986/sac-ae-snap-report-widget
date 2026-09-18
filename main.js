@@ -164,6 +164,12 @@
         // Eligible Count YoY — added 2026-09-11, from vEmployerEligibleCount.
         row(["", "", "Eligible Count", "", "2026"], [null, 1240]),
         row(["", "", "Eligible Count", "", "2027"], [null, 1310]),
+        // HSA Year-over-Year — added 2026-09-18. measures_1 (EmployeeCount
+        // slot) repurposed to carry SUM($) instead of a headcount.
+        row(["", "", "HSA Annual YoY", "", "2027"], [47, 128500]),
+        row(["", "", "HSA Annual YoY", "", "2026"], [40, 110000]),
+        row(["", "", "HSA One-Time YoY", "", "2027"], [15, 32000]),
+        row(["", "", "HSA One-Time YoY", "", "2026"], [18, 41000]),
         // Election_Status breakdown — added 2026-09-17. Reconciled against
         // the status rows above: Open (36) matches the Non-Completed tile
         // exactly (same population, two different derivations), and the
@@ -621,6 +627,14 @@
             return Math.round(pct) + "%";
         }
 
+        // Added 2026-09-18 for the HSA Year-over-Year rows. Sign kept
+        // separate from the digits ("-$500.00" not "$-500.00").
+        _money(v) {
+            const n = Number(v || 0);
+            const sign = n < 0 ? "-" : "";
+            return sign + "$" + Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
         _statusBucket(status) {
             if (COMPLETED_STATUSES.includes(status)) return "Completed";
             if (OPEN_STATUSES.includes(status)) return "Open";
@@ -728,6 +742,7 @@
             const byHsaBucket = {}; // added 2026-09-11 — "HSA Annual - Elected 0/>0" / "HSA One Time - Elected 0/>0"
             const byEligibleCount = {}; // added 2026-09-11 — keyed by Year ("2026"/"2027")
             const byElectionStatus = {}; // added 2026-09-17 — Open/Completed EL/Completed OTP/Default/Default Override
+            const byHsaYoy = {}; // added 2026-09-18 — "HSA Annual YoY"/"HSA One-Time YoY" -> { "2026"/"2027": {count, amount} }
             let totalSetUp = 0, open = 0;
 
             rows.forEach((r) => {
@@ -758,6 +773,18 @@
 
                 if (ELECTION_STATUS_ORDER.includes(subType)) {
                     byElectionStatus[subType] = (byElectionStatus[subType] || 0) + employerCount;
+                    return;
+                }
+
+                // HSA Annual/One-Time YoY — added 2026-09-18. Checked before
+                // the generic "HSA " prefix branch below, since both of
+                // these subType values also start with "HSA " and would
+                // otherwise be misrouted into byHsaBucket. employeeCount is
+                // repurposed here to carry SUM($), not a headcount — same
+                // pattern already used for "Eligible Count" above.
+                if ((subType === "HSA Annual YoY" || subType === "HSA One-Time YoY") && year) {
+                    if (!byHsaYoy[subType]) byHsaYoy[subType] = {};
+                    byHsaYoy[subType][year] = { count: employerCount, amount: employeeCount };
                     return;
                 }
 
@@ -830,7 +857,7 @@
                 totalSetUp, open,
                 bySynod, bySynodNames, daily,
                 byElectionType: byHealthPlan["2027"] || {}, // current-year bucket, same data the "Of Complete" panel always showed
-                byHealthPlan, byHsaBucket, byEligibleCount, byElectionStatus,
+                byHealthPlan, byHsaBucket, byEligibleCount, byElectionStatus, byHsaYoy,
             };
         }
 
@@ -1053,6 +1080,28 @@
                     sub: `${fmt(eligibleBefore)} (2026) → ${fmt(eligibleAfter)} (2027)`,
                 });
             }
+            // HSA Year-over-Year — added 2026-09-18, per Blair: is this
+            // year's HSA activity above or below last year's? Annual and
+            // One-Time shown as separate lines, each a dollar total and an
+            // employer count, both years. Cloned from the Operational
+            // widget's identical panel.
+            [["HSA Annual YoY", "HSA Annual — $ Elected", "HSA Annual — Employers"],
+             ["HSA One-Time YoY", "HSA One-Time — $ Elected", "HSA One-Time — Employers"]].forEach(([key, amountLabel, countLabel]) => {
+                const hsaBefore = (status.byHsaYoy[key] && status.byHsaYoy[key]["2026"]) || { count: 0, amount: 0 };
+                const hsaAfter = (status.byHsaYoy[key] && status.byHsaYoy[key]["2027"]) || { count: 0, amount: 0 };
+                const amountDelta = hsaAfter.amount - hsaBefore.amount;
+                const countDelta = hsaAfter.count - hsaBefore.count;
+                yoyEntries.push({
+                    name: amountLabel,
+                    value: `${amountDelta >= 0 ? "+" : ""}${this._money(amountDelta)}`,
+                    sub: `${this._money(hsaBefore.amount)} (2026) → ${this._money(hsaAfter.amount)} (2027)`,
+                });
+                yoyEntries.push({
+                    name: countLabel,
+                    value: `${countDelta >= 0 ? "+" : ""}${fmt(countDelta)}`,
+                    sub: `${fmt(hsaBefore.count)} (2026) → ${fmt(hsaAfter.count)} (2027)`,
+                });
+            });
             root.getElementById("yoyBreakdown").innerHTML = this._statRowsHtml(yoyEntries, "No YoY data bound yet");
 
             // Timeline — day-by-day table + cumulative tracker, 2027-only

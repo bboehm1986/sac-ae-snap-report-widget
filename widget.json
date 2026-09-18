@@ -1,7 +1,7 @@
 {
     "id": "com.porticobenefits.aesnapreport",
     "name": "AE Snap Report",
-    "version": "1.0.26",
+    "version": "1.0.27",
     "vendor": "Portico Benefits",
     "license": "",
     "eula": "",
@@ -13,7 +13,7 @@
             "kind": "main",
             "tag": "com-porticobenefits-aesnapreport",
             "url": "https://bboehm1986.github.io/sac-ae-snap-report-widget/main.js",
-            "integrity": "sha384-lQZU0FgF2Lib4wO2WzkAUazNJSjkUVZ3H3RDh2OWRXtp+JVCd4FUoU7f+Hul4D/F"
+            "integrity": "sha384-BbnK8IJAMNei8BX9tgznH5ekvvY1kkO7get0FQaumKAegrf5sSzKDK+gysHPaTkR"
         }
     ],
     "properties": {
@@ -35,7 +35,7 @@
             "feeds": [
                 {
                     "id": "dimensions",
-                    "description": "Status / Synod-Region / Election Sub-Type / Date / Year. Timeline rows (Date populated) now carry Year too (2026 or 2027, added 2026-09-14) -- the Timeline renders as a YoY grouped bar chart, two bars per calendar day, one per plan year. Election Sub-Type also carries the 5 Election_Status values (Open/Completed EL/Completed OTP/Default/Default Override, added 2026-09-17) for the 'By Election Status' panel -- matched by value against this closed vocabulary, same as the HSA and Eligible Count row-kinds.",
+                    "description": "Status / Synod-Region / Election Sub-Type / Date / Year. Timeline rows (Date populated) now carry Year too (2026 or 2027, added 2026-09-14) -- the Timeline renders as a cumulative line chart plus a daily-volume bar chart (2026-09-18), scoped to Completed EL/Completed OTP only. Election Sub-Type also carries the 5 Election_Status values (Open/Completed EL/Completed OTP/Default/Default Override, added 2026-09-17) for the 'By Election Status' panel, and 'HSA Annual YoY'/'HSA One-Time YoY' (added 2026-09-18, Year-tagged, EmployeeCount repurposed to carry SUM($)) for the Year-over-Year panel -- all matched by value against closed vocabularies, same disambiguation pattern as every other multiplexed row-kind here.",
                     "type": "dimension"
                 },
                 {
