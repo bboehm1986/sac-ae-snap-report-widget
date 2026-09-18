@@ -3095,3 +3095,18 @@ other Timeline change. Verified visually in both widgets' local
 
 **Status: deployed and confirmed — 2026-09-18.** Snap Report v1.0.29,
 Operational v1.0.10.
+
+## Snap Report: split HSA YoY into its own panel, same day
+
+Snap Report's "Year-over-Year Changes" panel had the HSA YoY rows
+appended onto the end of the health-plan/eligible-headcount rows in
+one long list. Blair asked to split HSA out into its own panel next to
+it, matching the Operational widget's layout (which already had HSA
+YoY as a separate panel from the start). New `hsaYoyBreakdown` div +
+panel added to the Breakdowns grid, label text and row shape copied
+verbatim from Operational's version (`${label} — Avg $ Elected` /
+`${label} — Employers`). No data/binding change — same `byHsaYoy`
+accumulator, just rendered into a second panel instead of appended to
+the first. Verified visually in local `preview.html` before deploy.
+
+**Status: deployed and confirmed — 2026-09-18.** Snap Report v1.0.30.

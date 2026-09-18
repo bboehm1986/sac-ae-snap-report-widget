@@ -554,6 +554,11 @@
                     <div class="panel-caption" style="margin-top:-4px;">Completed health-plan elections and eligible headcount, 2026 vs. 2027</div>
                     <div id="yoyBreakdown"></div>
                 </div>
+                <div class="panel">
+                    <div class="section-title" style="margin-top:0;">HSA Year-over-Year</div>
+                    <div class="panel-caption" style="margin-top:-4px;">Total $ elected and employer count, 2026 vs. 2027</div>
+                    <div id="hsaYoyBreakdown"></div>
+                </div>
             </div>
 
             <div class="section-title" id="timelineTitle">Timeline</div>
@@ -1084,31 +1089,35 @@
                     sub: `${fmt(eligibleBefore)} (2026) → ${fmt(eligibleAfter)} (2027)`,
                 });
             }
+            root.getElementById("yoyBreakdown").innerHTML = this._statRowsHtml(yoyEntries, "No YoY data bound yet");
+
             // HSA Year-over-Year — added 2026-09-18, per Blair: is this
             // year's HSA activity above or below last year's? Annual and
             // One-Time shown as separate lines, each a dollar total and an
-            // employer count, both years. Cloned from the Operational
-            // widget's identical panel.
-            [["HSA Annual YoY", "HSA Annual — Avg $ Elected", "HSA Annual — Employers"],
-             ["HSA One-Time YoY", "HSA One-Time — Avg $ Elected", "HSA One-Time — Employers"]].forEach(([key, amountLabel, countLabel]) => {
+            // employer count, both years. Split into its own panel
+            // 2026-09-18 (was rows appended to the health-plan YoY panel
+            // above) — same layout as the Operational widget's identical
+            // panel, cloned label-for-label.
+            const hsaYoyEntries = [];
+            [["HSA Annual YoY", "Annual"], ["HSA One-Time YoY", "One-Time"]].forEach(([key, label]) => {
                 const hsaBefore = (status.byHsaYoy[key] && status.byHsaYoy[key]["2026"]) || { count: 0, amount: 0 };
                 const hsaAfter = (status.byHsaYoy[key] && status.byHsaYoy[key]["2027"]) || { count: 0, amount: 0 };
                 const avgBefore = hsaBefore.count > 0 ? hsaBefore.amount / hsaBefore.count : 0;
                 const avgAfter = hsaAfter.count > 0 ? hsaAfter.amount / hsaAfter.count : 0;
                 const avgDelta = avgAfter - avgBefore;
                 const countDelta = hsaAfter.count - hsaBefore.count;
-                yoyEntries.push({
-                    name: amountLabel,
+                hsaYoyEntries.push({
+                    name: `${label} — Avg $ Elected`,
                     value: `${avgDelta >= 0 ? "+" : ""}${this._money(avgDelta)}`,
                     sub: `${this._money(avgBefore)} (2026) → ${this._money(avgAfter)} (2027)`,
                 });
-                yoyEntries.push({
-                    name: countLabel,
+                hsaYoyEntries.push({
+                    name: `${label} — Employers`,
                     value: `${countDelta >= 0 ? "+" : ""}${fmt(countDelta)}`,
                     sub: `${fmt(hsaBefore.count)} (2026) → ${fmt(hsaAfter.count)} (2027)`,
                 });
             });
-            root.getElementById("yoyBreakdown").innerHTML = this._statRowsHtml(yoyEntries, "No YoY data bound yet");
+            root.getElementById("hsaYoyBreakdown").innerHTML = this._statRowsHtml(hsaYoyEntries, "No HSA YoY data bound yet");
 
             // Timeline — day-by-day table + cumulative tracker, 2027-only
             // since 2026-09-16 (ACTDATE can't support day-by-day for 2026 —
