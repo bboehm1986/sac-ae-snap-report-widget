@@ -3078,3 +3078,20 @@ to both the Snap Report YoY panel and the Operational HSA YoY panel
 **Status: deployed and confirmed — 2026-09-18.** Snap Report v1.0.28,
 Operational v1.0.9. No cube or data-binding change for the average
 switch — main.js only.
+
+## Timeline: combined chart, same day
+
+Blair asked to combine the Timeline's two stacked charts (cumulative
+line, daily-volume bars) into one chart instead of showing them one
+above the other. `_svgLineChart`/`_svgBarChart` replaced with a single
+`_svgComboChart(daily)`: bars (daily count) render on a left-axis
+scale, the line (cumulative) overlays on an independent right-axis
+scale — a shared scale would flatten the bars, since cumulative totals
+run far higher than any single day's count. Added a small legend
+(swatch + label for each series) and axis-max labels on both sides so
+the two scales are legible. Same clone-both-widgets pattern as every
+other Timeline change. Verified visually in both widgets' local
+`preview.html` (mock data) before deploy.
+
+**Status: deployed and confirmed — 2026-09-18.** Snap Report v1.0.29,
+Operational v1.0.10.
