@@ -1085,16 +1085,18 @@
             // One-Time shown as separate lines, each a dollar total and an
             // employer count, both years. Cloned from the Operational
             // widget's identical panel.
-            [["HSA Annual YoY", "HSA Annual — $ Elected", "HSA Annual — Employers"],
-             ["HSA One-Time YoY", "HSA One-Time — $ Elected", "HSA One-Time — Employers"]].forEach(([key, amountLabel, countLabel]) => {
+            [["HSA Annual YoY", "HSA Annual — Avg $ Elected", "HSA Annual — Employers"],
+             ["HSA One-Time YoY", "HSA One-Time — Avg $ Elected", "HSA One-Time — Employers"]].forEach(([key, amountLabel, countLabel]) => {
                 const hsaBefore = (status.byHsaYoy[key] && status.byHsaYoy[key]["2026"]) || { count: 0, amount: 0 };
                 const hsaAfter = (status.byHsaYoy[key] && status.byHsaYoy[key]["2027"]) || { count: 0, amount: 0 };
-                const amountDelta = hsaAfter.amount - hsaBefore.amount;
+                const avgBefore = hsaBefore.count > 0 ? hsaBefore.amount / hsaBefore.count : 0;
+                const avgAfter = hsaAfter.count > 0 ? hsaAfter.amount / hsaAfter.count : 0;
+                const avgDelta = avgAfter - avgBefore;
                 const countDelta = hsaAfter.count - hsaBefore.count;
                 yoyEntries.push({
                     name: amountLabel,
-                    value: `${amountDelta >= 0 ? "+" : ""}${this._money(amountDelta)}`,
-                    sub: `${this._money(hsaBefore.amount)} (2026) → ${this._money(hsaAfter.amount)} (2027)`,
+                    value: `${avgDelta >= 0 ? "+" : ""}${this._money(avgDelta)}`,
+                    sub: `${this._money(avgBefore)} (2026) → ${this._money(avgAfter)} (2027)`,
                 });
                 yoyEntries.push({
                     name: countLabel,

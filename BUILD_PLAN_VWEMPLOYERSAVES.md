@@ -453,14 +453,135 @@ this same root problem).
 2. What determines `Default` vs. `Default Override` specifically — a
    `ResultCode` value, a date comparison, or something else?
 
-**Not acted on yet — this could mean rebuilding Gold's entire status
-derivation**, so no SQL changes made until the mapping is confirmed.
 Screenshot reference (former report, not yet in Datasphere): a cross-tab
 by health-plan bundle x status (`Open`/`Completed EL`/`Completed OTP`/
 `Default`/`Default Override`), totals `Open: 1`, `Completed EL: 4,254`,
 `Completed OTP: 6`, `Default: 655`, `Default Override: 1` — likely a
 full/closed historical cycle used as a reference for what this vocabulary
 looks like at scale, not current live 2027 numbers.
+
+**Blocking questions answered — 2026-09-17.** Blair confirmed both:
+the source is neither `ResultCode` nor a different HCM CDS view — it's
+derived from **`ProcessedBy` and `SubmittedOn` on `BRZ_vwEmployerSaves`**
+(a Bronze-layer view, not `vEmployerSaves` itself — presumably the
+un-deduplicated raw layer feeding into it, since the `Default Override`
+rule below needs to see multiple submission events per employer over
+time, not just the single latest attempt Gold's own `ROW_NUMBER()`
+dedup collapses down to). Exact derivation logic:
+
+| Status | Rule |
+|---|---|
+| `Open` | Not complete — no submission yet. |
+| `Completed EL` (Employer­Link) | A submission exists; `ProcessedBy` does **not** contain `@porticobenefits.org` — the employer's own contact submitted it directly (self-service). |
+| `Completed OTP` | A submission exists; `ProcessedBy` **does** contain `@porticobenefits.org` — Portico staff processed it (this "OTP" is unrelated to the HSA "One Time" fields elsewhere in this project — a naming coincidence, not the same concept). |
+| `Default` | `ProcessedBy` is `NULL` — nobody processed it, it defaulted automatically. |
+| `Default Override` | `ProcessedBy` was `NULL` (defaulted), **then** a later `SubmittedOn` row exists whose `ProcessedBy` does contain `@porticobenefits.org` — Portico staff went back and manually overrode a default after the fact. |
+
+**Not yet resolved — open before any SQL gets written:**
+1. Does this session have visibility into `BRZ_vwEmployerSaves` (same
+   Datasphere space as `vEmployerSaves`, or a different one)? What's
+   its exact grain and column list — does it carry `EmployerNumber`/
+   `RequestId`/`ProcessedBy`/`SubmittedOn`/`ResultCode`, and is it
+   genuinely un-deduplicated (multiple rows per employer, one per
+   submission event)?
+2. `Default Override`'s rule needs a **sequential/temporal** comparison
+   per employer (was there a `NULL`-`ProcessedBy` event, then a later
+   one with a Portico address) — this is a materially different query
+   shape than everything else in Gold so far (which all collapse to one
+   row per employer via `ROW_NUMBER()`). Needs its own window-function
+   logic (e.g. `LAG`/`LEAD` or a self-join ordered by `SubmittedOn`),
+   not a simple `CASE` on the latest row alone.
+3. **Product decision, not a technical one:** should this become a
+   **new, additional column** (e.g. `Employer_Status_Detail`) sitting
+   alongside the existing `Enrollment_Status` — lower risk, since
+   `Enrollment_Status` is already deeply embedded across every widget,
+   the aggregate cube, and the Drill-Down widget — or should it
+   **replace** `Enrollment_Status` everywhere? Recommend the additive
+   approach unless there's a specific reason the `ResultCode`-derived
+   version is actually wrong/misleading today.
+
+**Resolved — 2026-09-17, decided by Blair: additive new column
+`Election_Status`, not a replacement.** Confirmed all four detail
+statuses only ever apply when `ResultCode = 'S'` — `Enrollment_Status`
+stays completely untouched, so nothing downstream (widgets, the
+aggregate cube, Drill-Down) needs to change. Final derivation, added to
+`GLD_AE_Employer_Enrollment`'s SQL in the "Merge... into Gold" section
+below:
+
+```sql
+CASE
+    WHEN COALESCE(a."ResultCode", '') != 'S' THEN 'Open'
+    WHEN a."ProcessedBy" IS NULL THEN 'Default'
+    WHEN UPPER(a."ProcessedBy") LIKE '%@PORTICOBENEFITS.ORG%'
+         AND defaulted."First_Default_Submitted_On" IS NOT NULL
+         AND defaulted."First_Default_Submitted_On" < a."SubmittedOn"
+    THEN 'Default Override'
+    WHEN UPPER(a."ProcessedBy") LIKE '%@PORTICOBENEFITS.ORG%' THEN 'Completed OTP'
+    ELSE 'Completed EL'
+END AS "Election_Status"
+```
+
+`defaulted` is a new join (`vEmployerSaves` grouped by `EmployerNumber`,
+`MIN("SubmittedOn")` where `ResultCode = 'S' AND ProcessedBy IS NULL`),
+scoped by `EmployerNumber` rather than `RequestId` — confirmed
+equivalent in practice, since an employer's re-save attempts share one
+`RequestId` (verified below), but written against `EmployerNumber` as
+the more literal match to "did this employer ever default, at any
+point." Case-insensitive domain match (`UPPER(...)  LIKE`) used
+defensively in case `ProcessedBy` casing varies.
+
+**Verified against a known example — EmployerNumber 11903, confirmed by
+Blair to be Default Override.** Raw `vEmployerSaves` history (both rows
+share `RequestId` 7502):
+
+| ResultCode | ProcessedBy | SubmittedOn | AttemptedOn |
+|---|---|---|---|
+| S | NULL | 2026-09-16 15:51:05 | 2026-09-16 15:51:05 |
+| S | BC-BWatson@porticobenefits.org | 2026-09-16 16:06:25 | 2026-09-16 16:06:25 |
+
+Gold's existing dedup (`ROW_NUMBER() OVER (PARTITION BY "RequestId"
+ORDER BY "AttemptedOn" DESC)`) already picks the second row as `a`; the
+`defaulted` join finds `15:51:05` as the first NULL-`ProcessedBy`
+Success event; `15:51:05 < 16:06:25` → `Default Override`. Matches
+expected result exactly.
+
+**Status: deployed and confirmed live — 2026-09-17.** Verified in
+`AM_EMPLOYER_ENROLLMENT_DETAIL`'s own preview: all 5 values present
+with real aggregated counts, no errors. (One false alarm along the
+way: the Story briefly threw "Please contact your administrator" on
+this model — turned out to just be an undeployed pending change, not a
+data or reference problem; redeploying fixed it, no Story-side rebind
+needed this time.)
+
+**Discovery — 2026-09-17: "Completed" and "Defaulted" were never
+mutually exclusive.** Once live in the Snap Report widget, the numbers
+revealed that `Completed EL + Completed OTP + Default + Default
+Override` summed exactly to the old "Completed" tile's total — every
+`Default`/`Default Override` employer had been silently counted inside
+"Completed" the entire life of this project, while "Defaulted
+(running)" always showed 0 (it was driven by `DEFAULTED_STATUSES = []`,
+a placeholder with no real value to check against, documented since
+project start). **Blair's call: Option A** — redefine the tiles to be
+mutually exclusive using `Election_Status`: "Completed" now means
+`Completed EL + Completed OTP` only (actively completed by someone);
+"Defaulted (running)" now means `Default + Default Override` (closed
+automatically, not by action) — finally giving that tile real data
+after being a dead placeholder since the project's earliest days.
+Shipped in `sac-ae-snap-report-widget` v1.0.25; the dead
+`DEFAULTED_STATUSES`/aggregate `completed`/`defaulted`/`pctComplete`
+variables were removed from `main.js` (the Synod/Region panel's own
+per-region completion rate is untouched — it's a deliberately coarser
+"done vs. not done" concept, still keyed on `Enrollment_Status =
+Success`, not affected by this redefinition).
+
+**Not yet built — the Contribution Set x Election_Status crosstab**
+(matching the legacy report's own summary strip: `Open`/`Completed EL`/
+`Completed OTP`/`Default`/`Default Override` as columns, Contribution
+Set as rows, employer counts as cells) — this was the whole reason
+`Election_Status` was worth sourcing in the first place. **Blair's
+call, 2026-09-17: when built, it goes on the Operational widget**, not
+the Employer Detail page (where it was originally sketched) — holding
+off on building it for now.
 
 ## New requirements from a former report — captured 2026-09-14, not yet built
 
@@ -2176,7 +2297,8 @@ can't be null — it's the partition/join key); the ~3 employers with no
 elsewhere in this doc) get `"12345 - (Unknown Employer)"` instead of a
 null concatenation.
 
-**Status: written, not yet deployed.**
+**Status: deployed and confirmed — 2026-09-15** ("I deployed the gld
+data set").
 
 **Not yet done (deliberately deferred, per Blair):**
 - Adding a matching `Employer_Display_Name` column to
@@ -2197,3 +2319,762 @@ null concatenation.
   findings it should get a fresh Business Name matching this alias
   automatically, the same way `Eligible_Band` did — but verify once
   deployed rather than assume.
+
+## Merge `GLD_AE_Employer_Enrollment_YoY` into Gold — 2026-09-15
+
+Blair: eliminate `GLD_AE_Employer_Enrollment_YoY` as a standalone view
+by folding its 2026-side columns and derived fields directly into
+`GLD_AE_Employer_Enrollment` (confirmed: "Yes, merge it into Gold").
+Same grain (one row per employer), so this is a straight column
+addition, not a reshape — unlike the aggregate summary cube, which
+cannot absorb this data (grain/column-list mismatch, discussed in
+chat).
+
+Full replacement for `GLD_AE_Employer_Enrollment` (supersedes the "Gold
+SQL" section above — includes `Employer_Display_Name`, already live,
+plus the new 2026-side and Eligible Band columns):
+
+```sql
+SELECT
+    a."EmployerNumber"     AS "Employer_Number",
+    de."EMPRNAME"          AS "Employer_Name",
+    a."EmployerNumber" || ' - ' || COALESCE(de."EMPRNAME", '(Unknown Employer)') AS "Employer_Display_Name",
+    de."RegionSynodName"   AS "Synod_Region",
+    COALESCE(de."AddressLine1", '')      AS "Address_Line_1",
+    COALESCE(de."AddressLine2", '')      AS "Address_Line_2",
+    COALESCE(de."AddressLine3", '')      AS "Address_Line_3",
+    COALESCE(de."City", '')              AS "City",
+    COALESCE(de."StateProvinceCode", '') AS "State_Province",
+    COALESCE(de."PostalCode", '')        AS "Postal_Code",
+    COALESCE(de."CountryName", '')       AS "Country",
+    CASE a."ResultCode"
+        WHEN 'S'  THEN 'Success'
+        WHEN 'A'  THEN 'Abandoned'
+        WHEN 'N'  THEN 'Not Started'
+        WHEN 'IP' THEN 'In Progress'
+        WHEN 'F'  THEN 'Needs Follow-up'
+        WHEN 'E'  THEN 'Needs Follow-up'
+        WHEN 'W'  THEN 'Needs Follow-up'
+        WHEN 'I'  THEN 'Needs Follow-up'
+        ELSE 'Needs Follow-up'
+    END                     AS "Enrollment_Status",
+    CASE
+        WHEN COALESCE(a."ResultCode", '') != 'S' THEN 'Open'
+        WHEN a."ProcessedBy" IS NULL THEN 'Default'
+        WHEN UPPER(a."ProcessedBy") LIKE '%@PORTICOBENEFITS.ORG%'
+             AND defaulted."First_Default_Submitted_On" IS NOT NULL
+             AND defaulted."First_Default_Submitted_On" < a."SubmittedOn"
+        THEN 'Default Override'
+        WHEN UPPER(a."ProcessedBy") LIKE '%@PORTICOBENEFITS.ORG%' THEN 'Completed OTP'
+        ELSE 'Completed EL'
+    END                     AS "Election_Status",
+    a."CONTRIBUTIONSET"    AS "Contribution_Set",
+    a."CUST_BUND_NAME"     AS "Health_Plan_Bundle",
+    a."HSA_HRA_SINGLE"     AS "HSA_Single",
+    a."HSA_HRA_FAMILY"     AS "HSA_Family",
+    CASE WHEN a."HSAONETIMESINGLE" IS NULL OR TRIM(a."HSAONETIMESINGLE") IN ('', '-') THEN NULL ELSE CAST(a."HSAONETIMESINGLE" AS DECIMAL(18,2)) END AS "HSA_One_Time_Single",
+    CASE WHEN a."HSAONETIMEFAMILY" IS NULL OR TRIM(a."HSAONETIMEFAMILY") IN ('', '-') THEN NULL ELSE CAST(a."HSAONETIMEFAMILY" AS DECIMAL(18,2)) END AS "HSA_One_Time_Family",
+    a."numberOfEmployees"  AS "Employee_Count",
+    a."AttemptedOn"        AS "Last_Attempted_On",
+    CASE WHEN a."ResultCode" = 'S' THEN a."SubmittedOn" END AS "Completed_Date",
+    CASE WHEN a."ResultCode" = 'A' THEN a."SubmittedOn" END AS "Abandoned_Date",
+    eb."EligibleCount"      AS "Eligible_Count_2027",
+    COALESCE(
+        CASE
+            WHEN eb."EligibleCount" >= 20 THEN '20+'
+            WHEN eb."EligibleCount" >= 10 THEN '10-19'
+            WHEN eb."EligibleCount" >= 3  THEN '3-9'
+            WHEN eb."EligibleCount" IS NOT NULL THEN 'Under 3'
+            ELSE 'Unknown'
+        END, 'Unknown'
+    )                        AS "Eligible_Band",
+    CASE
+        WHEN eb."EligibleCount" >= 20 THEN 1
+        WHEN eb."EligibleCount" >= 10 THEN 2
+        WHEN eb."EligibleCount" >= 3  THEN 3
+        WHEN eb."EligibleCount" IS NOT NULL THEN 4
+        ELSE 5
+    END                      AS "Band_Sort_Order",
+    CASE a."ResultCode"
+        WHEN 'N'  THEN 1
+        WHEN 'IP' THEN 2
+        WHEN 'F'  THEN 3
+        WHEN 'E'  THEN 3
+        WHEN 'W'  THEN 3
+        WHEN 'I'  THEN 3
+        WHEN 'A'  THEN 4
+        WHEN 'S'  THEN 5
+        ELSE 3
+    END                      AS "Status_Sort_Order",
+    y26."STATUS"             AS "Status_2026",
+    y26."CONTRIBUTIONSET"    AS "Contribution_Set_2026",
+    CASE WHEN y26."HSA_HRA_SINGLE" IS NULL OR TRIM(y26."HSA_HRA_SINGLE") IN ('', '-') THEN NULL ELSE CAST(y26."HSA_HRA_SINGLE" AS DECIMAL(18,2)) END AS "HSA_Single_2026",
+    CASE WHEN y26."HSA_HRA_FAMILY" IS NULL OR TRIM(y26."HSA_HRA_FAMILY") IN ('', '-') THEN NULL ELSE CAST(y26."HSA_HRA_FAMILY" AS DECIMAL(18,2)) END AS "HSA_Family_2026",
+    CASE WHEN y26."HSAONETIMESINGLE" IS NULL OR TRIM(y26."HSAONETIMESINGLE") IN ('', '-') THEN NULL ELSE CAST(y26."HSAONETIMESINGLE" AS DECIMAL(18,2)) END AS "HSA_One_Time_Single_2026",
+    CASE WHEN y26."HSAONETIMEFAMILY" IS NULL OR TRIM(y26."HSAONETIMEFAMILY") IN ('', '-') THEN NULL ELSE CAST(y26."HSAONETIMEFAMILY" AS DECIMAL(18,2)) END AS "HSA_One_Time_Family_2026",
+    CASE WHEN y26."EECOUNT" IS NULL OR TRIM(y26."EECOUNT") IN ('', '-') THEN NULL ELSE CAST(y26."EECOUNT" AS BIGINT) END AS "Employee_Count_2026",
+    y26."ACTDATE"            AS "Action_Date_2026"
+FROM (
+    SELECT
+        "EmployerNumber", "RequestId", "ResultCode", "AttemptedOn",
+        "CONTRIBUTIONSET", "CUST_BUND_NAME", "HSA_HRA_SINGLE", "HSA_HRA_FAMILY",
+        "HSAONETIMESINGLE", "HSAONETIMEFAMILY", "numberOfEmployees", "SubmittedOn",
+        "ProcessedBy",
+        ROW_NUMBER() OVER (PARTITION BY "RequestId" ORDER BY "AttemptedOn" DESC) AS "rn"
+    FROM "vEmployerSaves"
+) a
+LEFT JOIN "vDimEmployer" de
+    ON de."EMPRNO" = a."EmployerNumber"
+LEFT JOIN (
+    SELECT "EMPRNO", "EligibleCount"
+    FROM "vEmployerEligibleCount"
+    WHERE "EnrollmentYear" = 2027
+) eb ON eb."EMPRNO" = a."EmployerNumber"
+LEFT JOIN (
+    SELECT "EmployerNumber", MIN("SubmittedOn") AS "First_Default_Submitted_On"
+    FROM "vEmployerSaves"
+    WHERE "ResultCode" = 'S' AND "ProcessedBy" IS NULL
+    GROUP BY "EmployerNumber"
+) defaulted ON defaulted."EmployerNumber" = a."EmployerNumber"
+LEFT JOIN (
+    SELECT *
+    FROM (
+        SELECT "EMPRNO", "STATUS", "CONTRIBUTIONSET", "HSA_HRA_SINGLE",
+            "HSA_HRA_FAMILY", "HSAONETIMESINGLE", "HSAONETIMEFAMILY",
+            "EECOUNT", "ACTDATE",
+            ROW_NUMBER() OVER (PARTITION BY "EMPRNO" ORDER BY "ACTDATE" DESC) AS "rn"
+        FROM "ZVHCM_AE_1_26Q"
+    ) ranked
+    WHERE "rn" = 1
+) y26 ON y26."EMPRNO" = a."EmployerNumber"
+WHERE a."rn" = 1
+```
+
+Design note: unsuffixed columns (`Enrollment_Status`, `Contribution_Set`,
+`Health_Plan_Bundle`, `HSA_Single`, etc.) intentionally NOT duplicated as
+`_2027`-suffixed copies since they already unambiguously mean "current
+cycle" — only genuinely new 2026-side and Eligible Band columns were
+added. `Status_Sort_Order`'s `ELSE -> 3` (not `6` as in the original
+standalone YoY view) is a deliberate correction since the original
+`ELSE -> 6` branch was dead/unreachable code.
+
+**Status: deployed and confirmed live — 2026-09-17**, then extended
+same day with `Address_Line_1/2/3`, `City`, `State_Province`,
+`Postal_Code`, `Country` (all from `vDimEmployer`'s newly-added address
+columns, joined via the existing `de` alias — no new join needed) for
+the Employer Detail roster/download build. See "Debugging saga" section
+immediately below for what actually broke between the first deploy
+attempt and the working version before this address addition — the SQL
+above already reflects both the bug fix (guarded `CASE`/`TRIM`/`IN`
+instead of plain `CAST`) and the address columns.
+**Status of the address addition: deployed, then patched again same
+day** — the address columns initially passed `NULL` straight through
+from `vDimEmployer` for employers with no address on file, which
+silently dropped those employers' entire row from the Employer Detail
+roster Table (a native Cross-Tab/Grid table can suppress a whole fact
+row if any Row-axis Attribute is NULL for it — found by noticing one
+specific employer, 00001, was invisible in the Table despite showing
+correctly in the Drill-Down widget on the same page; removing the
+address fields from Rows made it reappear, confirming the cause). Fixed
+by wrapping every address column in `COALESCE(..., '')` so a missing
+address is an empty string, never NULL — the SQL above already reflects
+this. **Confirmed working end to end — 2026-09-17**: no Analytic Model
+rebuild was needed for this particular fix, since it changed only
+column *values*, not the column list or types (the delete-and-recreate
+quirk documented elsewhere in this file is specifically about schema
+changes — new columns or Attribute/Measure reclassification — not
+value-level edits to an existing column).
+
+**Employer Detail roster Table — done, 2026-09-17.** Native Grid/Cross-
+Tab Table on the Employer Detail page, bound to `AM_EMPLOYER_
+ENROLLMENT_DETAIL`: Rows = `Employer_Display_Name`, address fields,
+`Synod_Region`, `Enrollment_Status`, `Contribution_Set`; Columns ->
+Measures = `Employee_Count`, `Eligible_Count_2027`. No fixed filter
+(unlike the original Table+Export, which is deliberately locked to
+`Enrollment_Status = 'Success'` for a leadership-only download — this
+page is meant to browse every employer). Filters via the page's
+existing `Employer_Display_Name` Input Control plus new `Synod_Region`
+and `Enrollment_Status` Input Controls, all against the same data
+source instance (no Link Dimensions needed). CSV export via SAC's
+native right-click -> Export -- no custom code needed.
+
+**After deployment — all done:**
+- Deleted `GLD_AE_Employer_Enrollment_YoY` and the old
+  `AM_EMPLOYER_ENROLLMENT_YOY` (both removed 2026-09-16).
+- Re-pointed the Drill-Down widget (`sac-ae-drilldown-widget` v1.0.1) at
+  `AM_EMPLOYER_ENROLLMENT_DETAIL` instead — field renames:
+  `Status_2027`->`Enrollment_Status`,
+  `Contribution_Set_2027`->`Contribution_Set`,
+  `Health_Plan_Bundle_2027`->`Health_Plan_Bundle`,
+  `HSA_Single_2027`->`HSA_Single`, etc. `_2026`-suffixed and
+  `Eligible_Band`/`Band_Sort_Order`/`Status_Sort_Order` fields kept
+  their names as-is.
+- Widget's Input Control keys on `Employer_Display_Name`, not
+  `Employer_Name` — Blair's own call 2026-09-16 (it includes the
+  employer number, disambiguating same-named employers). No widget code
+  change needed for this; it's a positional binding, the widget doesn't
+  care what string lands in dimension slot 1.
+
+## Debugging saga: why the Drill-Down widget showed zero rows — 2026-09-16/17
+
+Long chain of red herrings before finding the real cause, worth keeping
+so the next person doesn't repeat the same detours:
+
+1. **`AM_EMPLOYER_ENROLLMENT_DETAIL` didn't pick up new Gold columns
+   after the merge** — known quirk, already documented elsewhere in
+   this file (delete-and-recreate needed, not just a refresh). Took two
+   rounds: first for the new Attributes, then again because the new
+   `_2026` numeric columns came through as Attributes instead of
+   Measures (had to be flagged as Measures manually on the Gold view
+   itself, not in the Analytic Model — Semantic Usage/Measure
+   classification lives on the Fact source, the Analytic Model just
+   inherits it).
+2. **Business Name inheritance** — passthrough columns (even
+   CAST-wrapped ones, correcting an earlier assumption that only bare
+   passthroughs were affected) inherit their *source* column's business
+   name in the Analytic Model, not the Gold alias. `Status_2026` showed
+   as `STATUS`, `HSA_Single_2026` as `HSA_HRA_SINGLE`, etc. — cosmetic,
+   fixed by manually relabeling, but confusing since some `_2026`
+   fields share a business name with their `_2027` counterpart (both
+   source from a column called `HSA_HRA_SINGLE`, just in different
+   tables).
+3. **Drill Limitation (500 rows/60 columns default)** — real, and worth
+   fixing (Gold has 915+ employer rows, growing toward 5,000), but
+   turned out NOT to be the cause of the zero-row problem. Set to
+   Unlimited behavior on any data source instance touching this model.
+4. **Stale/orphaned data source reference** — after `AM_EMPLOYER_
+   ENROLLMENT_DETAIL` was deleted and recreated multiple times, the
+   Story's bound data source instance failed with "Failed to open the
+   model" when opened in Data Analyzer — a real, confirmed dead
+   reference. Fixed by having SAC sign the user out (unrelated,
+   coincidental) and rebuilding the page's widget/bindings from
+   scratch, which got a genuinely fresh reference.
+5. **The actual root cause**, only found after all of the above: a
+   plain SQL runtime error, `invalid number: SQL Error` (HANA exception
+   70000339) — every numeric `CAST` in the merged Gold SQL was failing
+   for at least one row, which fails the *entire* query (HANA's `CAST`
+   throws on bad input rather than returning NULL), so every consumer
+   got zero rows back, not just the widget. Root cause: `ZVHCM_AE_1_26Q`
+   uses a **literal `-` (hyphen) placeholder** in numeric fields for
+   employers with `STATUS = 'Open'` (found by previewing the raw source
+   table directly and sorting by each numeric column). Fixed by
+   replacing every `CAST(x AS ...)` with
+   `CASE WHEN x IS NULL OR TRIM(x) IN ('', '-') THEN NULL ELSE CAST(x AS ...) END`.
+6. **`TRY_CAST` and `REGEXP_LIKE` are NOT supported by Datasphere's SQL
+   View parser**, even though both are valid HANA SQL — this parser
+   validates against a narrower grammar than full HANA. Attempting
+   either produced a misleading, seemingly-unrelated syntax error
+   ("incorrect syntax near 'THEN'") at a line/column position that did
+   not correspond to the actual problem and did not change no matter
+   how the surrounding code was edited/retyped — a strong tell that a
+   persistent identical error position across genuinely different edits
+   means the error is about something structural (an unsupported
+   function), not a typo in the visible code. Stick to `CASE`/`IS
+   NULL`/`TRIM`/`IN`/`CAST` for this kind of defensive numeric
+   conversion in a Datasphere SQL View.
+
+**Possible connection worth checking, not yet confirmed:** the legacy
+operational report Blair shared 2026-09-16 has a Status crosstab with
+columns `Open` / `Completed EL` / `Completed OTP` / `Default` / `Default
+Override` — this is suspiciously close to `Status_2026`'s own vocabulary
+above (`STATUS` from `ZVHCM_AE_1_26Q`, e.g. "Completed EL" / "Completed
+OTP" already appear in the Drill-Down widget's mock data). If the legacy
+report is reading that same underlying HCM status field rather than our
+`vEmployerSaves`-derived `Enrollment_Status`, that would answer the
+still-open Ahmed/Yong status-vocabulary question directly — worth
+confirming before building the Employer Detail page's crosstab strip.
+
+## Reversal: 2026 day-by-day Timeline data is not usable — 2026-09-16
+
+**Blair: `ACTDATE` cannot support genuine day-by-day association for
+2026 data.** This retracts the "Timeline — YoY comparison" section
+above — the 12th cube block (`ACTDATE`-grouped 2026 Timeline) and the
+grouped-bar/day-by-day-table rendering built on top of it. Both
+widgets' Timeline sections need to drop the per-day 2026 series
+entirely.
+
+**A second, related bug this surfaced, caught before shipping it:**
+the Cumulative Tally Tracker's `% Completed 2026` stat was *also*
+unsound, for a reason beyond just "no day-by-day" — its numerator
+(`cum2026`, summed only from the subset of 2026 rows with a parseable
+`ACTDATE`) was being divided by a denominator from a completely
+different, date-independent source (the Health Plan Bundle block's
+`CONTRIBUTIONSET`-derived total). Given `ACTDATE` is now known to be
+unreliable/sparse, that numerator was very likely a severe undercount
+— meaning the stat could have been silently making 2026 look far
+worse than it actually was. **Decided: remove `% Completed 2026` and
+the On Track/Watch/Act status from the tracker entirely** rather than
+patch it with a still-unconfirmed substitute — a genuine "2026 total
+population" figure (distinct from "2026 completed count") isn't
+pinned down without revisiting the still-open status-vocabulary
+question with Ahmed/Yong. **Kept:** `Count Completed 2027` / `%
+Completed 2027` — both still fully sound (2027's own total, from
+`status.totalSetUp`, is unrelated to any of this).
+
+**Scope of the fix, both `sac-ae-snap-report-widget` and
+`sac-ae-operational-widget`:**
+- Cube: remove the 12th block (`ACTDATE`-based 2026 Timeline) from
+  `DS_EMPLOYER_ENROLLMENT_SUMMARY` entirely — full corrected SQL below.
+  The existing `Completed_Date`/Timeline block stays tagged
+  `Enrollment_Year = 2027` (harmless to leave as-is, no need to revert
+  to `NULL`).
+- `main.js` (both widgets): parser simplified back to single-series
+  date tracking (`rawDates`, not `rawDatesByYear`) — the fixed,
+  zero-filled 10/1-10/14 window logic (`_fixedWindowCounts`/
+  `_anchorYear`) stays, since that part was never dependent on 2026
+  data and is still correct/useful on its own. `daily` is now
+  `{ mmdd, count }` per day instead of `{ mmdd, y2026, y2027 }`.
+  Defensive guard added: a date row tagged any year other than `2027`
+  is skipped outright, in case a not-yet-redeployed cube still emits
+  the old 2026 block somewhere mid-rollout.
+- Day-by-day table: `Day | Count Completed 2027 | % Completed 2027` —
+  `% Completed 2026` column removed.
+- Cumulative Tracker: `Count Completed 2027` / `% Completed 2027` only
+  — `% Completed 2026` and the status pill removed. `_paceStatus()`
+  and the `.cum-status*` CSS removed as dead code.
+- Mock data: the `2025-10-xx`/`"2026"`-tagged Timeline rows removed
+  from both widgets' mocks (no longer representative of anything the
+  real cube will send).
+
+**Corrected cube SQL — 11 blocks, `DS_EMPLOYER_ENROLLMENT_SUMMARY`:**
+
+```sql
+SELECT
+    "Synod_Region"            AS "Synod_Region",
+    "Enrollment_Status"       AS "Enrollment_Status",
+    CAST('' AS NVARCHAR(50))  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)   AS "Date",
+    NULL                      AS "Enrollment_Year",
+    COUNT(*)                  AS "EmployerCount",
+    SUM("Employee_Count")     AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+GROUP BY "Synod_Region", "Enrollment_Status"
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))  AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))  AS "Enrollment_Status",
+    "Health_Plan_Bundle"      AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)   AS "Date",
+    2027                      AS "Enrollment_Year",
+    COUNT(*)                  AS "EmployerCount",
+    CAST(NULL AS DECIMAL)     AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Enrollment_Status" = 'Success'
+GROUP BY "Health_Plan_Bundle"
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))  AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))  AS "Enrollment_Status",
+    "Bucket"                  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)   AS "Date",
+    2026                      AS "Enrollment_Year",
+    COUNT(*)                  AS "EmployerCount",
+    CAST(NULL AS DECIMAL)     AS "EmployeeCount"
+FROM (
+    SELECT SUBSTR_REGEXPR('^(.+?)\s+[0-9]+$' IN "CONTRIBUTIONSET" GROUP 1) AS "Bucket"
+    FROM "ZVHCM_AE_1_26Q"
+) x
+GROUP BY "Bucket"
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))                       AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))                       AS "Enrollment_Status",
+    CAST('HSA Annual - Elected 0' AS NVARCHAR(50))  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)                        AS "Date",
+    NULL                                            AS "Enrollment_Year",
+    COUNT(*)                                       AS "EmployerCount",
+    CAST(NULL AS DECIMAL)                          AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Enrollment_Status" = 'Success' AND "HSA_Single" <= 0 AND "HSA_Family" <= 0
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))                       AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))                       AS "Enrollment_Status",
+    CAST('HSA Annual - Elected >0' AS NVARCHAR(50)) AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)                        AS "Date",
+    NULL                                            AS "Enrollment_Year",
+    COUNT(*)                                       AS "EmployerCount",
+    CAST(NULL AS DECIMAL)                          AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Enrollment_Status" = 'Success' AND ("HSA_Single" > 0 OR "HSA_Family" > 0)
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))                          AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))                          AS "Enrollment_Status",
+    CAST('HSA One Time - Elected 0' AS NVARCHAR(50))   AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)                           AS "Date",
+    NULL                                               AS "Enrollment_Year",
+    COUNT(*)                                          AS "EmployerCount",
+    CAST(NULL AS DECIMAL)                             AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Enrollment_Status" = 'Success' AND "HSA_One_Time_Single" <= 0 AND "HSA_One_Time_Family" <= 0
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))                          AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))                          AS "Enrollment_Status",
+    CAST('HSA One Time - Elected >0' AS NVARCHAR(50))  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)                           AS "Date",
+    NULL                                               AS "Enrollment_Year",
+    COUNT(*)                                          AS "EmployerCount",
+    CAST(NULL AS DECIMAL)                             AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Enrollment_Status" = 'Success' AND ("HSA_One_Time_Single" > 0 OR "HSA_One_Time_Family" > 0)
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))  AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))  AS "Enrollment_Status",
+    CAST('' AS NVARCHAR(50))  AS "Election_Category",
+    CAST(CAST("Completed_Date" AS DATE) AS TIMESTAMP) AS "Date",
+    2027                      AS "Enrollment_Year",
+    COUNT(*)                  AS "EmployerCount",
+    CAST(NULL AS DECIMAL)     AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Election_Status" IN ('Completed EL', 'Completed OTP') AND "Completed_Date" IS NOT NULL
+GROUP BY CAST("Completed_Date" AS DATE)
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))                AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))                AS "Enrollment_Status",
+    CAST('Eligible Count' AS NVARCHAR(50))  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)                 AS "Date",
+    "EnrollmentYear"                        AS "Enrollment_Year",
+    CAST(NULL AS BIGINT)                    AS "EmployerCount",
+    SUM("EligibleCount")                    AS "EmployeeCount"
+FROM "vEmployerEligibleCount"
+GROUP BY "EnrollmentYear"
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))  AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))  AS "Enrollment_Status",
+    "Bucket"                  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)   AS "Date",
+    NULL                      AS "Enrollment_Year",
+    COUNT(*)                  AS "EmployerCount",
+    CAST(NULL AS DECIMAL)     AS "EmployeeCount"
+FROM (
+    SELECT
+        CASE
+            WHEN "AttemptCount" - 1 = 1 THEN 'Needed 1 Attempt'
+            WHEN "AttemptCount" - 1 = 2 THEN 'Needed 2 Attempts'
+            WHEN "AttemptCount" - 1 >= 3 THEN 'Needed 3+ Attempts'
+        END AS "Bucket"
+    FROM (
+        SELECT "RequestId", COUNT(*) AS "AttemptCount"
+        FROM "vEmployerSaves"
+        GROUP BY "RequestId"
+        HAVING COUNT(*) > 1
+    ) counted
+) x2
+GROUP BY "Bucket"
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))  AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))  AS "Enrollment_Status",
+    "Bucket"                  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)   AS "Date",
+    NULL                      AS "Enrollment_Year",
+    COUNT(*)                  AS "EmployerCount",
+    CAST(NULL AS DECIMAL)     AS "EmployeeCount"
+FROM (
+    SELECT
+        CASE
+            WHEN DAYS_BETWEEN("Last_Attempted_On", CURRENT_DATE) <= 3 THEN 'Stalled 0-3 Days'
+            WHEN DAYS_BETWEEN("Last_Attempted_On", CURRENT_DATE) <= 7 THEN 'Stalled 4-7 Days'
+            ELSE 'Stalled 8+ Days'
+        END AS "Bucket"
+    FROM "GLD_AE_Employer_Enrollment"
+    WHERE "Enrollment_Status" != 'Success'
+) y
+GROUP BY "Bucket"
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))                    AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))                    AS "Enrollment_Status",
+    CAST('Recently Completed' AS NVARCHAR(50))  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)                     AS "Date",
+    NULL                                        AS "Enrollment_Year",
+    COUNT(*)                                    AS "EmployerCount",
+    CAST(NULL AS DECIMAL)                       AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Enrollment_Status" = 'Success' AND "Completed_Date" >= ADD_DAYS(CURRENT_DATE, -2)
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))  AS "Synod_Region",
+    z."Enrollment_Status"     AS "Enrollment_Status",
+    z."Band"                  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)   AS "Date",
+    NULL                      AS "Enrollment_Year",
+    COUNT(*)                  AS "EmployerCount",
+    CAST(NULL AS DECIMAL)     AS "EmployeeCount"
+FROM (
+    SELECT
+        g."Enrollment_Status" AS "Enrollment_Status",
+        COALESCE(
+            CASE
+                WHEN eb."EligibleCount" >= 20 THEN '20+'
+                WHEN eb."EligibleCount" >= 10 THEN '10-19'
+                WHEN eb."EligibleCount" >= 3  THEN '3-9'
+                WHEN eb."EligibleCount" IS NOT NULL THEN 'Under 3'
+                ELSE 'Unknown'
+            END, 'Unknown'
+        ) AS "Band"
+    FROM "GLD_AE_Employer_Enrollment" g
+    LEFT JOIN (
+        SELECT "EMPRNO", "EligibleCount"
+        FROM "vEmployerEligibleCount"
+        WHERE "EnrollmentYear" = 2027
+    ) eb ON eb."EMPRNO" = g."Employer_Number"
+) z
+GROUP BY z."Enrollment_Status", z."Band"
+
+UNION ALL
+
+SELECT
+    "Synod_Region"             AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))  AS "Enrollment_Status",
+    "Election_Status"         AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)   AS "Date",
+    NULL                      AS "Enrollment_Year",
+    COUNT(*)                  AS "EmployerCount",
+    CAST(NULL AS DECIMAL)     AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+GROUP BY "Synod_Region", "Election_Status"
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))                AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))                AS "Enrollment_Status",
+    CAST('HSA Annual YoY' AS NVARCHAR(50))  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)                 AS "Date",
+    2027                                     AS "Enrollment_Year",
+    COUNT(*)                                AS "EmployerCount",
+    SUM(COALESCE("HSA_Single", 0) + COALESCE("HSA_Family", 0)) AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Enrollment_Status" = 'Success' AND (COALESCE("HSA_Single", 0) > 0 OR COALESCE("HSA_Family", 0) > 0)
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))                AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))                AS "Enrollment_Status",
+    CAST('HSA Annual YoY' AS NVARCHAR(50))  AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)                 AS "Date",
+    2026                                     AS "Enrollment_Year",
+    COUNT(*)                                AS "EmployerCount",
+    SUM(COALESCE("HSA_Single_2026", 0) + COALESCE("HSA_Family_2026", 0)) AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+WHERE (COALESCE("HSA_Single_2026", 0) > 0 OR COALESCE("HSA_Family_2026", 0) > 0)
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))                   AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))                   AS "Enrollment_Status",
+    CAST('HSA One-Time YoY' AS NVARCHAR(50))   AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)                    AS "Date",
+    2027                                        AS "Enrollment_Year",
+    COUNT(*)                                   AS "EmployerCount",
+    SUM(COALESCE("HSA_One_Time_Single", 0) + COALESCE("HSA_One_Time_Family", 0)) AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+WHERE "Enrollment_Status" = 'Success' AND (COALESCE("HSA_One_Time_Single", 0) > 0 OR COALESCE("HSA_One_Time_Family", 0) > 0)
+
+UNION ALL
+
+SELECT
+    CAST('' AS NVARCHAR(50))                   AS "Synod_Region",
+    CAST('' AS NVARCHAR(50))                   AS "Enrollment_Status",
+    CAST('HSA One-Time YoY' AS NVARCHAR(50))   AS "Election_Category",
+    CAST(NULL AS TIMESTAMP)                    AS "Date",
+    2026                                        AS "Enrollment_Year",
+    COUNT(*)                                   AS "EmployerCount",
+    SUM(COALESCE("HSA_One_Time_Single_2026", 0) + COALESCE("HSA_One_Time_Family_2026", 0)) AS "EmployeeCount"
+FROM "GLD_AE_Employer_Enrollment"
+WHERE (COALESCE("HSA_One_Time_Single_2026", 0) > 0 OR COALESCE("HSA_One_Time_Family_2026", 0) > 0)
+```
+
+**Status: deployed and confirmed — 2026-09-15.** This removed the 12th
+(dead) 2026 Timeline block from the previously-deployed 12-block cube.
+`DS_EMPLOYER_ENROLLMENT_SUMMARY` is now an 11-block cube; block 8's
+`Enrollment_Year = 2027` tag was left in place (harmless).
+
+**Extended again — 2026-09-18, per Blair, 2 changes:**
+1. The `Election_Status` block now also groups by `Synod_Region`
+   (previously blank) — feeds both the simple aggregate "By Election
+   Status" panel (sums across regions in JS, unaffected by the extra
+   rows) and a new "By Election Status & Synod" crosstab on the
+   Operational widget.
+2. Four new blocks added for the **HSA year-over-year tile**: total
+   dollar amount and employer count, split Annual vs. One-Time, each
+   compared 2026 vs. 2027. Follows the same `EmployerCount`/
+   `EmployeeCount`-repurposing pattern as the existing "Eligible Count"
+   block (`EmployeeCount` here carries `SUM($)` instead of its usual
+   headcount meaning). `COALESCE(..., 0)` guards every addition
+   defensively, in case either side of a `+` is NULL for a given row
+   (arithmetic NULL propagation would otherwise silently drop that
+   row's real value from the sum, not just exclude it) — same class of
+   bug as the `'-'` placeholder issue found earlier this project, just
+   preempted this time instead of debugged after the fact. The 2026
+   side has no `Enrollment_Status = 'Success'` filter, matching the
+   precedent already set by the existing 2026 health-plan-bucket block
+   (block 3), which doesn't filter by status either.
+
+**Also new this same day — the "Multiple Attempts" block replaced with
+3 buckets** (see the Operational-specific section below for the exact
+SQL and the widget-side changes).
+
+**Block 12 added back — 2026-09-17, this time for `Election_Status`**,
+not the retired 2026 Timeline data. Same multiplexing pattern as the
+Health Plan Bundle / HSA / Stalled-time blocks: `Election_Category`
+carries the `Election_Status` value (`Open`/`Completed EL`/`Completed
+OTP`/`Default`/`Default Override`), every other dimension blank/NULL.
+No new discriminator column needed — the widget distinguishes this
+row-kind from the others sharing `Election_Category` by matching
+against this closed 5-value vocabulary, same approach already used for
+the `"HSA "`-prefix and `"Eligible Count"` row-kinds. Feeds Snap
+Report's repurposed "By Election Status" panel (was "Non-Completed —
+By Status", scoped to `Enrollment_Status`'s `Open`-bucket values only —
+replaced because `Election_Status` only differentiates within
+`Enrollment_Status = Success`, so the old "non-completed" scope
+wouldn't have shown anything useful from this field). Also intended
+later for the Contribution Set x Election_Status crosstab, once that
+gets built (Blair's call: on the Operational widget, not Employer
+Detail — see the "Merge... into Gold" section above).
+
+**Status: written, not yet deployed.**
+
+## Timeline redesign: line + bar charts, Completions-only — 2026-09-18
+
+Blair, 3-part request: (1) drop "(running)" from the "Defaulted" tile
+label on Snap Report (Operational has no such tile, not affected); (2)
+replace the Timeline section's day-by-day table with a cumulative line
+chart plus a daily-volume bar chart, scoped to genuine completions only
+(`Completed EL` + `Completed OTP`, excluding `Default`/`Default
+Override`) — clone to both `sac-ae-snap-report-widget` and
+`sac-ae-operational-widget`; (3) change the "2026 Annual Enrollment"
+eyebrow to "2027 Annual Enrollment" on both widgets.
+
+**Layout decisions confirmed with Blair:** the day-by-day table is
+fully replaced (not kept alongside the charts); the "Count Completed
+2027 / % Completed 2027" summary numbers stay, with the new line chart
+added below them inside the same Cumulative Tally Tracker panel.
+
+**Data source:** block 8 of `DS_EMPLOYER_ENROLLMENT_SUMMARY` (Timeline)
+updated above to filter on `Election_Status IN ('Completed EL',
+'Completed OTP')` instead of `Enrollment_Status = 'Success'` — no
+widget-side filtering needed, the cube already excludes defaults.
+Same value-only change class as the earlier `'-'` placeholder fix — no
+Analytic Model rebuild expected, same column list.
+
+**Charts are hand-rolled inline SVG**, no charting library — same
+dependency-free constraint as everywhere else in this project (CSP-
+strict widget iframes). `_svgLineChart`/`_svgBarChart` read the same
+`daily` array the old table used, so nothing about the data-parsing
+layer changed, only the render layer.
+
+**Status: deployed and confirmed — 2026-09-18.** Snap Report v1.0.26,
+Operational v1.0.8 (as of the last change in this section below).
+
+## Second Operational batch, same day — Election_Status/attempts/HSA YoY
+
+Same day, second round, all on Operational unless noted:
+- "Not Yet Completed — By Employer Size" → "Completed — By Employer
+  Size" (the panel always showed % *completed*, the title said the
+  opposite).
+- "Non-Completed — By Status" and its Synod crosstab both switched from
+  `Enrollment_Status` to `Election_Status`, now covering **all**
+  employers instead of scoping to non-completed only — same reasoning
+  as Snap Report's identical panel from earlier the same day.
+- The single "Needed >1 Attempt" stat replaced with 3 buckets (1 / 2 /
+  3+ extra attempts) — new cube block, `vEmployerSaves` grouped by
+  `RequestId`, `COUNT(*) - 1` bucketed.
+- New **HSA Year-over-Year panel** (Operational) / new rows on the
+  existing YoY panel (Snap Report): total $ elected and employer count,
+  Annual and One-Time split, 2026 vs. 2027 — 4 new cube blocks, same
+  `EmployerCount`/`EmployeeCount`-repurposing pattern as "Eligible
+  Count" (`EmployeeCount` carries `SUM($)` here, not a headcount).
+- `Election_Status`'s cube block (added earlier the same day) extended
+  to also group by `Synod_Region`, needed for the new crosstab.
+
+**Status: deployed and confirmed — 2026-09-18.** Snap Report v1.0.27,
+Operational v1.0.8. Cube (`DS_EMPLOYER_ENROLLMENT_SUMMARY`) is now 17
+blocks — full SQL handed to Blair to paste in; no Analytic Model
+rebuild needed (same value-only change class as before, column list
+unchanged).
+
+## Third batch, same day — Drill-Down widget + one Operational rename
+
+Drill-Down widget (`sac-ae-drilldown-widget`), all per Blair:
+- Dropped the "Needs attention, by size..." caption above the
+  needs-attention list.
+- Status (both the list's status column and the comparison card's
+  Status row, 2027 side) now reads `Election_Status` instead of
+  `Enrollment_Status` — added as a new dimension (`dimensions_12`) to
+  this widget's binding, current-cycle only like address.
+  `Enrollment_Status` (`dimensions_3`) stays bound, now purely to drive
+  the needs-attention sort order (`STATUS_PRIORITY`) — display and sort
+  key intentionally decoupled here.
+- The `Eligible_Band` pill/text (card and list) replaced with a raw
+  **Member Count** — `Employee_Count`, already bound, no new data
+  needed. The sort itself still prioritizes by `Eligible_Band` size
+  under the hood even though the band is no longer displayed.
+- `Contribution Set` row moved to the bottom of the comparison card,
+  relabeled "Contribution Set (Configuration)".
+
+Operational: "Stalled Time" panel retitled "Started not Completed" (no
+data/logic change, label only).
+
+**Status: deployed and confirmed — 2026-09-18.** Drill-Down v1.0.4,
+Operational v1.0.8.
+
+## Cube validation fix + HSA YoY average, same day
+
+The 17-block cube SQL above initially failed Datasphere validation:
+`invalid column name: 'x2_1.Bucket'...` — a HANA query-planner quirk
+where `COUNT(*)` inside a `CASE` combined with `GROUP BY`/`HAVING` in
+the same `SELECT`, under an outer `GROUP BY` on that derived column,
+loses track of the column after HANA internally splits the derived
+table. Fixed by adding a nesting level in the attempt-bucket block:
+materialize `"AttemptCount"` via a plain `GROUP BY`/`HAVING` subquery
+first, then apply the `CASE` bucketing to the already-materialized
+column with no aggregate at that level. Re-deployed clean; confirmed
+via `AM_EMPLOYER_ENROLLMENT_SUMMARY`'s own preview showing real
+`HSA Annual YoY`/`HSA One-Time YoY` $ and `Needed 1/2/3+ Attempts`
+rows.
+
+Once live, Blair asked to try the HSA YoY "$ Elected" line as an
+**average per employer** instead of a sum — no cube change needed,
+since the cube block's `EmployerCount`/`EmployeeCount` slots already
+carry both the count and the sum in the same row; the widgets now
+divide client-side (`amount / count`, guarded against zero) and the
+row label reads "Avg $ Elected" to make the change explicit. Applies
+to both the Snap Report YoY panel and the Operational HSA YoY panel
+(same pattern, both widgets).
+
+**Status: deployed and confirmed — 2026-09-18.** Snap Report v1.0.28,
+Operational v1.0.9. No cube or data-binding change for the average
+switch — main.js only.
