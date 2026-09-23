@@ -161,9 +161,14 @@
         row(["", "", "HSA Annual - Elected >0", "", ""], [47]),
         row(["", "", "HSA One Time - Elected 0", "", ""], [98]),
         row(["", "", "HSA One Time - Elected >0", "", ""], [15]),
-        // Eligible Count YoY — added 2026-09-11, from vEmployerEligibleCount.
+        // Eligible Count YoY — added 2026-09-11, now from vDimEmployer
+        // (source switched 2026-09-23, see BUILD_PLAN doc).
         row(["", "", "Eligible Count", "", "2026"], [null, 1240]),
         row(["", "", "Eligible Count", "", "2027"], [null, 1310]),
+        // Covered Count YoY — added 2026-09-23, same pattern, from
+        // vDimEmployer.HealthCoveredCount.
+        row(["", "", "Covered Count", "", "2026"], [null, 1080]),
+        row(["", "", "Covered Count", "", "2027"], [null, 1145]),
         // HSA Year-over-Year — added 2026-09-18. measures_1 (EmployeeCount
         // slot) repurposed to carry SUM($) instead of a headcount.
         row(["", "", "HSA Annual YoY", "", "2027"], [47, 128500]),
@@ -812,6 +817,7 @@
             const byHealthPlan = {}; // added 2026-09-11 — keyed by Year ("2026"/"2027"), then bucket name
             const byHsaBucket = {}; // added 2026-09-11 — "HSA Annual - Elected 0/>0" / "HSA One Time - Elected 0/>0"
             const byEligibleCount = {}; // added 2026-09-11 — keyed by Year ("2026"/"2027")
+            const byCoveredCount = {}; // added 2026-09-23 — "Covered Count" row-kind, same shape as byEligibleCount
             const byElectionStatus = {}; // added 2026-09-17 — Open/Completed EL/Completed OTP/Default/Default Override
             const byHsaYoy = {}; // added 2026-09-18 — "HSA Annual YoY"/"HSA One-Time YoY" -> { "2026"/"2027": {count, amount} }
             let totalSetUp = 0, open = 0;
@@ -839,6 +845,12 @@
                 if (subType === "Eligible Count") {
                     // measures_1 is repurposed to carry SUM(EligibleCount) on this row-kind, see header comment
                     byEligibleCount[year] = (byEligibleCount[year] || 0) + employeeCount;
+                    return;
+                }
+
+                if (subType === "Covered Count") {
+                    // measures_1 repurposed to carry SUM(HealthCoveredCount), same pattern as "Eligible Count"
+                    byCoveredCount[year] = (byCoveredCount[year] || 0) + employeeCount;
                     return;
                 }
 
@@ -928,7 +940,7 @@
                 totalSetUp, open,
                 bySynod, bySynodNames, daily,
                 byElectionType: byHealthPlan["2027"] || {}, // current-year bucket, same data the "Of Complete" panel always showed
-                byHealthPlan, byHsaBucket, byEligibleCount, byElectionStatus, byHsaYoy,
+                byHealthPlan, byHsaBucket, byEligibleCount, byCoveredCount, byElectionStatus, byHsaYoy,
             };
         }
 
@@ -1140,15 +1152,31 @@
                 const sign = delta > 0 ? "+" : "";
                 return { name: this._displayBucketName(b), value: `${sign}${fmt(delta)}`, sub: `${fmt(before)} (2026) → ${fmt(after)} (2027)` };
             });
+            // Renamed "Eligible Employees" -> "Eligible Lives" 2026-09-23,
+            // per Blair, once the source switched to vDimEmployer's true
+            // member+dependent headcount (see BUILD_PLAN doc). "Covered
+            // Lives" added the same day, same pattern, from the new
+            // "Covered Count" row-kind (vDimEmployer.HealthCoveredCount).
             const eligibleBefore = status.byEligibleCount["2026"] || 0;
             const eligibleAfter = status.byEligibleCount["2027"] || 0;
             if (eligibleBefore || eligibleAfter) {
                 const eligibleDelta = eligibleAfter - eligibleBefore;
                 const sign = eligibleDelta > 0 ? "+" : "";
                 yoyEntries.push({
-                    name: "Eligible Employees",
+                    name: "Eligible Lives",
                     value: `${sign}${fmt(eligibleDelta)}`,
                     sub: `${fmt(eligibleBefore)} (2026) → ${fmt(eligibleAfter)} (2027)`,
+                });
+            }
+            const coveredBefore = status.byCoveredCount["2026"] || 0;
+            const coveredAfter = status.byCoveredCount["2027"] || 0;
+            if (coveredBefore || coveredAfter) {
+                const coveredDelta = coveredAfter - coveredBefore;
+                const sign = coveredDelta > 0 ? "+" : "";
+                yoyEntries.push({
+                    name: "Covered Lives",
+                    value: `${sign}${fmt(coveredDelta)}`,
+                    sub: `${fmt(coveredBefore)} (2026) → ${fmt(coveredAfter)} (2027)`,
                 });
             }
             root.getElementById("yoyBreakdown").innerHTML = this._statRowsHtml(yoyEntries, "No YoY data bound yet");

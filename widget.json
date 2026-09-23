@@ -1,7 +1,7 @@
 {
     "id": "com.porticobenefits.aesnapreport",
     "name": "AE Snap Report",
-    "version": "1.0.34",
+    "version": "1.0.35",
     "vendor": "Portico Benefits",
     "license": "",
     "eula": "",
@@ -13,7 +13,7 @@
             "kind": "main",
             "tag": "com-porticobenefits-aesnapreport",
             "url": "https://bboehm1986.github.io/sac-ae-snap-report-widget/main.js",
-            "integrity": "sha384-qjn8+8BduC1pex90eF5Ba4SftOAZmfUOSgoYNfThTw9wu92CLwwsj33wHLbHYz+M"
+            "integrity": "sha384-WwvjZzKxgiNFikjY8IzDa8LzN+ELvPpRfXdrsgkGgyE7kF/3ftB80dQcukuFmq0B"
         }
     ],
     "properties": {
@@ -35,7 +35,7 @@
             "feeds": [
                 {
                     "id": "dimensions",
-                    "description": "Status / Synod-Region / Election Sub-Type / Date / Year. Timeline rows (Date populated) now carry Year too (2026 or 2027, added 2026-09-14) -- the Timeline renders as a cumulative line chart plus a daily-volume bar chart (2026-09-18), scoped to Completed EL/Completed OTP only. Election Sub-Type also carries the 5 Election_Status values (Open/Completed EL/Completed OTP/Default/Default Override, added 2026-09-17) for the 'By Election Status' panel, and 'HSA Annual YoY'/'HSA One-Time YoY' (added 2026-09-18, Year-tagged, EmployeeCount repurposed to carry SUM($)) for the Year-over-Year panel -- all matched by value against closed vocabularies, same disambiguation pattern as every other multiplexed row-kind here.",
+                    "description": "Status / Synod-Region / Election Sub-Type / Date / Year. Timeline rows (Date populated) now carry Year too (2026 or 2027, added 2026-09-14) -- the Timeline renders as a cumulative line chart plus a daily-volume bar chart (2026-09-18), scoped to Completed EL/Completed OTP only. Election Sub-Type also carries the 5 Election_Status values (Open/Completed EL/Completed OTP/Default/Default Override, added 2026-09-17) for the 'By Election Status' panel, 'HSA Annual YoY'/'HSA One-Time YoY' (added 2026-09-18, Year-tagged, EmployeeCount repurposed to carry SUM($)) for the Year-over-Year panel, and 'Eligible Count'/'Covered Count' (Year-tagged, EmployeeCount repurposed to carry SUM(EligibleCount)/SUM(HealthCoveredCount), 'Covered Count' added 2026-09-23 alongside a source switch to vDimEmployer for both) for the 'Eligible Lives'/'Covered Lives' YoY stats -- all matched by value against closed vocabularies, same disambiguation pattern as every other multiplexed row-kind here.",
                     "type": "dimension"
                 },
                 {
