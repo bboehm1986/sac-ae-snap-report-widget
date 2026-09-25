@@ -3179,3 +3179,365 @@ widgets' local `preview.html` before deploy.
 
 **Status: deployed and confirmed — 2026-09-18.** Snap Report v1.0.34,
 Operational v1.0.14.
+
+## Deferred follow-up, flagged 2026-09-22: retire vEmployerEligibleCount
+
+Per Blair: Ahmed Sheikh has added the eligible-count fields (the same
+figures `vEmployerEligibleCount` currently computes) directly into
+`vDimEmployer` — which `GLD_AE_Employer_Enrollment` already joins on
+`EMPRNO` for `Employer_Name`/`Synod_Region`/address. Once confirmed,
+Gold's separate `vEmployerEligibleCount` `LEFT JOIN` (filtered to
+`EnrollmentYear=2027`) can be dropped in favor of pulling
+`Eligible_Count_2027`/`Eligible_Band` straight off the existing
+`vDimEmployer` join — one fewer source, and Ahmed can delete
+`vEmployerEligibleCount` once nothing reads from it.
+
+**Bonus:** this would also retire the open BR-1 risk already flagged
+on `vEmployerEligibleCount`'s own catalogue entry (2027-branch
+date-literal bug, checks `20261231` instead of `20271231`) — moot
+once Gold stops reading from that view entirely.
+
+**Explicitly NOT urgent — Blair's call, 2026-09-22:** deferred until
+after the Production migration currently in progress. Do not touch
+Gold's SQL for this until Blair says go. When it happens: (1) confirm
+the exact new field names on `vDimEmployer` with Ahmed, (2) swap
+Gold's `Eligible_Count_2027`/`Eligible_Band`/`Band_Sort_Order`
+derivation to source from the `vDimEmployer` join instead of the
+`vEmployerEligibleCount` join, (3) drop the `vEmployerEligibleCount`
+join and its subquery, (4) update the catalogue: retire
+`vEmployerEligibleCount`'s entry (same pattern as
+`GLD_AE_Employer_Enrollment_YoY`'s retirement), update
+`GLD_AE_Employer_Enrollment`'s own Source & Fields section, (5) no
+Analytic Model schema change expected (`Eligible_Count_2027`/
+`Eligible_Band`/`Band_Sort_Order` stay the same column names on Gold,
+just re-sourced internally) — but verify via Preview before assuming.
+
+## Urgent fix: vDimEmployer grain change fanned out Gold, 2026-09-23
+
+Ahmed Sheikh restructured `vDimEmployer` (deployed 2026-09-22) from one
+row per employer into one row per (employer, EnrollmentYear) — three
+`UNION ALL` branches (prior/current/next calendar year), same
+restructuring pattern applied to `vDimMember` the same week. Gold's own
+`LEFT JOIN "vDimEmployer" de ON de."EMPRNO" = a."EmployerNumber"` had no
+year qualifier, so once vDimEmployer's new shape went live, that join
+silently fanned out every employer's row 3x — tripling every count in
+Gold and everything downstream (the cube, both Analytic Models, all
+three widgets). Caught from a live screenshot showing Total Set Up:
+14,884, implausibly high.
+
+**Year mapping, confirmed by Blair:** vDimEmployer's "current year"
+branch (`EnrollmentYear = 2026`, i.e. `YEAR(CURRENT_DATE)` today) is
+what feeds Gold's "2027" cycle — AE activity for the 2027 benefit year
+happens during calendar 2026. vDimEmployer's "prior year" branch
+(`EnrollmentYear = 2025`) would map to Gold's "2026" cycle if Gold ever
+needs it from this source (it currently doesn't — the `_2026` columns
+come from `ZVHCM_AE_1_26Q`, not vDimEmployer).
+
+**Fix:** added `AND de."EnrollmentYear" = 2026` to the join. Hardcoded
+literal, not `YEAR(CURRENT_DATE)`, matching how every other year
+reference in this pipeline is handled (manually updated each AE cycle,
+not computed) — see the cube's HSA YoY blocks and AE_WINDOW constants
+for the same convention.
+
+**Status: deployed 2026-09-23.** Next: confirm via
+`AM_EMPLOYER_ENROLLMENT_DETAIL`'s own Preview that counts dropped back
+to normal (no 3x inflation) before trusting anything downstream. Value-
+only change (join condition, not a new/removed/reclassified column) —
+no Analytic Model delete-and-recreate expected, but verify rather than
+assume, same rule as always on this project.
+
+**Separate finding surfaced by the same investigation — not a bug,
+corrected understanding:** vDimEmployer's new `EligibleCount`/
+`HealthCoveredCount` fields (added the same 2026-09-22 deploy, meant to
+eventually replace `vEmployerEligibleCount` per the deferred plan
+above) apply a `+1` per MEMBER before re-summing to the employer level
+— initially catalogued as a likely "compounding off-by-one bug," but
+Blair confirmed this is intentional: the `+1` accounts for the member
+themselves, making this a true eligible-headcount (members + eligible
+dependents), not just an eligible-dependents count.
+
+**This means the deferred vEmployerEligibleCount swap is NOT a like-
+for-like source relocation.** `vEmployerEligibleCount`'s own `+1` is
+applied once per EMPLOYER (a flat adjustment after summing dependents
+across the whole employer, purpose still unconfirmed), not once per
+member. So the two sources compute genuinely different metrics:
+current source ≈ eligible dependents + 1 flat; vDimEmployer's new
+fields ≈ eligible dependents + 1 per member (true full headcount).
+Swapping sources will visibly change `Eligible_Count_2027`/
+`Eligible_Band` for any employer with more than one member — expected
+when it happens, not a bug to chase. Still deferred until after
+Production migration, per Blair's original call.
+
+## Second urgent fix, same day: 40-employer gap traced to a NULL Health_Plan_Bundle, 2026-09-23
+
+After the vDimEmployer fan-out fix deployed, Total Set Up (4,990) no
+longer matched the sum of the By Election Status breakdown (4,950) —
+a 40-employer gap that persisted across a hard refresh, ruling out
+simple staleness. Verified at the SQL level first: both cube blocks
+read `FROM "GLD_AE_Employer_Enrollment"` with no `WHERE` clause, just
+different `GROUP BY` columns — their totals are mathematically
+guaranteed to match, so the discrepancy had to be in the widget's
+parsing or a different cube block entirely, not those two blocks
+themselves.
+
+Root cause found via `AM_EMPLOYER_ENROLLMENT_SUMMARY`'s own Preview,
+grouped by `Election_Category` alone: a `(Null)` row with exactly 40
+`EmployerCount`, distinct from the `(No value)` (empty-string) row
+every other blank row-kind produces. Traced to the **Health Plan
+Bundle block** (`"Health_Plan_Bundle" AS "Election_Category"`, no
+`COALESCE`) — 40 `Enrollment_Status='Success'` employers have no
+`Health_Plan_Bundle` set (`CUST_BUND_NAME` NULL in Gold), so this
+block emits a genuine SQL `NULL` for them instead of the cube's usual
+empty-string blank placeholder.
+
+That distinction mattered because of the widget's own `if (subType)
+return;` guard (main.js, the fix for the 2026-09-14 bug — see that
+comment in the code) — it checks for *truthy* `subType`, and
+JavaScript treats `null` the same as `""` (both falsy). So these 40
+NULL-bundle rows looked identical to blank Status/Region rows to the
+widget: they fell through the guard and got miscounted into
+`totalSetUp`, while simultaneously never appearing in the "Of
+Complete — Election Type" panel (that panel's own matching also
+requires a truthy `subType`). Two symptoms, one root cause.
+
+**Fix:** `COALESCE("Health_Plan_Bundle", 'Unknown') AS "Election_Category"`
+in place of the bare column, in the Health Plan Bundle block only.
+Gives those 40 employers a real "Unknown" bucket in the panel instead
+of silently vanishing, and stops them leaking into `totalSetUp`.
+
+**Correction, same day: this fix alone did not resolve the gap.**
+After deploying it, `(Null): 40` persisted unchanged in
+`AM_EMPLOYER_ENROLLMENT_SUMMARY`'s own Preview across a hard refresh,
+the Story's own native refresh, and a plain redeploy of
+`DS_EMPLOYER_ENROLLMENT_SUMMARY` (even after confirming with Ahmed
+Sheikh that a `BenefitEvents` connection switch that morning did touch
+`vEmployerSaves`/`BRZ_vwEmployerSaves`). A brand-new Analytic Model
+built fresh on the same (unchanged) source view showed the identical
+stale result, ruling out caching anywhere in the Model/Story layer.
+
+**Real root cause, found via isolated testing:** the Health Plan
+Bundle fix was a real bug worth fixing but was NOT the source of this
+specific 40-row gap. The actual source: the **2026 Health Plan Method
+block**, which extracts a bucket name via
+`SUBSTR_REGEXPR('^(.+?)\s+[0-9]+$' IN "CONTRIBUTIONSET" GROUP 1)` —
+this returns SQL `NULL` whenever a `CONTRIBUTIONSET` value doesn't
+match "words + trailing number." This block has no `WHERE` clause at
+all, so every non-matching row flowed through. Confirmed directly via
+a throwaway view isolating just this block's logic: `NULL: 40`, exact
+match. Same downstream mechanism as before — the widget's `if
+(subType) return` guard treats `NULL` as falsy, same as the cube's
+intentional empty-string blank placeholder, so these rows leaked into
+`totalSetUp`.
+
+**Fix:** `COALESCE("Bucket", 'Unknown') AS "Election_Category"` in
+place of the bare `"Bucket"` reference, in the 2026 Health Plan Method
+block. `GROUP BY "Bucket"` stays unchanged.
+
+**Diagnostic process, worth recording:** built a parallel
+`DS_EMPLOYER_ENROLLMENT_SUMMARY_V2` view with both fixes to test
+without touching the live object — it worked correctly on the first
+deploy, while the original object kept showing the stale `(Null): 40`
+result across multiple separate edit/redeploy attempts. Before
+committing to a full Analytic-Model-and-Story rebind onto `V2`, tried
+one more direct edit of the *original* `DS_EMPLOYER_ENROLLMENT_SUMMARY`
+with both fixes combined — this time it worked. Cause of the earlier
+stuck deploys not conclusively identified (possibly related to the
+`BenefitEvents` connection transition still settling, possibly
+something else) — noting for the record in case it recurs. `V2` and
+its Analytic Model, plus the two diagnostic throwaway views
+(`ZZ_TEST_BUNDLE_CHECK` and the regex-bucket isolation test), were
+deleted once the original was confirmed working — no rebuild ended up
+being necessary.
+
+**Status: both fixes deployed and confirmed — 2026-09-23.**
+`AM_EMPLOYER_ENROLLMENT_SUMMARY`'s own Preview confirmed clean (no
+`(Null)` row anywhere in the full 18-row-kind output). Next: confirm
+`TOTAL SET UP` matches the `By Election Status` sum on the live Story.
+
+## Eligible Lives / Covered Lives feature, 2026-09-23 — PENDING catalogue update
+
+Added a new "Covered Lives" YoY stat alongside a renamed "Eligible
+Lives" (was "Eligible Employees") in the Snap Report widget's
+Year-over-Year panel, and replaced the Drill-Down widget's "Employee
+Count" comparison-card row with "Eligible Count" + a new "Covered
+Lives" row — both sourced from `vDimEmployer`'s `HealthCoveredCount`
+field (Eligible Count already used `EligibleCount`). Full detail:
+
+- `GLD_AE_Employer_Enrollment`: added a second `vDimEmployer` join
+  (`de26`, `EnrollmentYear = 2025`, feeding the "2026" side) and 3 new
+  columns — `Health_Covered_Count_2027`, `Eligible_Count_2026`,
+  `Health_Covered_Count_2026`.
+- `DS_EMPLOYER_ENROLLMENT_SUMMARY`: new "Covered Count" row-kind
+  (19th block), same shape as "Eligible Count," `SUM("HealthCoveredCount")`
+  from `vDimEmployer`.
+- `AM_EMPLOYER_ENROLLMENT_SUMMARY`: no change needed (value-only, same
+  7 columns).
+- `AM_EMPLOYER_ENROLLMENT_DETAIL`: schema change, 11→14 Measures. Hit
+  a "Design Time Error" requiring "Revert to Deployed Version," then
+  the 3 new fields landed as Dimensions instead of Measures until
+  reclassified as Measures on `GLD_AE_Employer_Enrollment`'s own Model
+  Properties first (source-level classification, not the AM's) — once
+  fixed there, the AM picked them up correctly. Story-level binding
+  also needed the 3 new measures added manually, appended at
+  `measures_11/12/13` (not reordered) to match `main.js`'s indices.
+- All three widgets (`sac-ae-snap-report-widget`, `sac-ae-operational-widget`
+  — guard-only, doesn't render this stat, `sac-ae-drilldown-widget`)
+  deployed: Snap Report v1.0.35, Operational v1.0.15, Drill-Down v1.0.5.
+
+**PENDING, not yet done — Blair's explicit request to track this:**
+the data catalogue (`GLD_AE_Employer_Enrollment`,
+`DS_EMPLOYER_ENROLLMENT_SUMMARY`, `AM_EMPLOYER_ENROLLMENT_DETAIL`
+entries) needs updating to reflect all of the above — deliberately not
+done yet since the underlying `vDimEmployer` data is still actively
+being triaged (see next section) and the reported numbers are a
+moving target; catalogue update deferred until that settles so the
+entries don't need immediate re-revision.
+
+## vDimEmployer data-quality triage, same day — IN PROGRESS, no fixes applied
+
+Live "Eligible Lives"/"Covered Lives" numbers on Snap Report jumped
+across several readings the same day (51,126→53,582; then
+57,508→60,638; then 171,603→181,602; then 103,573→104,266) — clearly a
+moving target, not our own code. Ahmed Sheikh is independently
+triaging `vDimEmployer` at the same time; **Blair's explicit
+instruction: hold off on any permanent fixes on our side while this is
+in progress, diagnostics only.**
+
+Ruled out so far: row-level duplication in `vDimEmployer` (`TotalRows`
+exactly equals `DistinctEmployers` per `EnrollmentYear`, confirmed via
+direct count). Partially implicated: population scope — `vDimEmployer`
+covers ~9,480 employers vs. Gold's ~4,917 overlap, and scoping to just
+the overlap does reduce the total, but not enough to fully explain the
+swings seen — the per-employer values themselves appear to be shifting
+too, consistent with Ahmed's own concurrent changes rather than a
+static bug on either side.
+
+Four diagnostic queries (outliers, average-per-employer, year-over-year
+per-employer swings, `HealthCoveredCount > EligibleCount` rule
+violations) handed to Blair to share with Ahmed — not run by Claude,
+no results seen. A standalone throwaway view (`ZZ_ELIGIBLE_COVERED_CHECK`,
+reproducing the widget's exact `SUM`/`GROUP BY` logic straight off
+`vDimEmployer`) was also given so Blair can watch the numbers settle in
+real time without needing a full Story refresh each time.
+
+**Status: unresolved, in progress, deliberately unfixed on our side.**
+Once Ahmed confirms his fix is complete and the numbers stabilize,
+revisit whether `GLD_AE_Employer_Enrollment`/`DS_EMPLOYER_ENROLLMENT_SUMMARY`
+still need a Gold-population-scoping fix (`AND "EMPRNO" IN (SELECT
+"Employer_Number" FROM "GLD_AE_Employer_Enrollment")` on both new
+blocks) on top of whatever Ahmed fixes upstream, or whether his fix
+alone resolves it.
+
+**PENDING catalogue updates, expanded — two more items to fold in
+alongside the Eligible Lives/Covered Lives update above once things
+settle:**
+- `vDimEmployer`'s own catalogue entry needs updating to reflect
+  today's data-quality triage (the `EligibleCount`/`HealthCoveredCount`
+  identical-totals issue Ahmed is fixing, and whatever the eventual
+  root cause turns out to be) — BR-9 already has the initial finding,
+  needs a resolution note once Ahmed confirms his fix.
+- `vEmployerEligibleCount` is now fully unreferenced (Gold and the
+  cube both switched to `vDimEmployer` today) and safe to delete —
+  once actually deleted in Datasphere, mark its catalogue entry
+  retired, same pattern as `GLD_AE_Employer_Enrollment_YoY`'s own
+  retirement, and remove/update the `related_products` cross-references
+  on every page that still links to it (`GLD_AE_Employer_Enrollment`,
+  `DS_EMPLOYER_ENROLLMENT_SUMMARY`, `vwEmployerSaves`'s own family
+  tree).
+
+## 2026-09-24 — vDimEmployer year-mapping fix, DEPLOYED
+
+`vDimEmployer`'s "final version" (received earlier today) hardcoded to
+just 2 plan-year branches (`EnrollmentYear` 2026/2027, evaluated as of
+each year's 1 January) and dropped the calendar-relative 3-branch
+structure our `de`/`de26` joins depended on — this broke Gold's `de26`
+join (`EnrollmentYear = 2025` matched nothing) as soon as vDimEmployer
+redeployed.
+
+Blair confirmed the fix direction: since vDimEmployer's own 2026/2027
+labels now map directly onto Gold's `_2026`/`_2027` labels, the
+"artificial year offset" the code carried from the old calendar-relative
+structure is no longer needed and was removed — a pure value/logic
+change, no columns added/removed/renamed, no Analytic Model rebuild
+required, no widget-code changes needed (all three widgets already key
+off literal `"2026"`/`"2027"` strings regardless of how the cube computes
+them).
+
+**Changes, both deployed by Blair:**
+- `GLD_AE_Employer_Enrollment`: `de` join's `AND de."EnrollmentYear" = 2026`
+  → `= 2027`; `de26` join's `AND de26."EnrollmentYear" = 2025` → `= 2026`.
+- `DS_EMPLOYER_ENROLLMENT_SUMMARY`: "Eligible Count" and "Covered Count"
+  blocks' `WHERE "EnrollmentYear" IN (2025, 2026)` → `IN (2026, 2027)`,
+  and the `CASE "EnrollmentYear" WHEN 2025 THEN 2026 WHEN 2026 THEN 2027
+  END AS "Enrollment_Year"` relabel replaced with a direct
+  `"EnrollmentYear" AS "Enrollment_Year"` passthrough.
+
+Verification queries (Gold: `Eligible_Count_2026`/`Health_Covered_Count_2026`
+populated again; cube: exactly 4 rows across Eligible Count/Covered Count ×
+2026/2027, no NULL year) handed to Blair to run post-deploy.
+
+**Gold verification, partial result (2026-09-24):** first query confirms
+`de26` join is matching again — `Eligible_Count_2026`/`Health_Covered_Count_2026`
+populated (sample values 1-5) for employers that were previously NULL.
+However, in that same sample, `Eligible_Count_2027`/`Health_Covered_Count_2027`
+came back NULL for all 5 rows — unconfirmed whether this is isolated to the
+sample or means the `de` join (`EnrollmentYear = 2027`) isn't matching at all,
+which would be expected/benign if `vDimEmployer` simply doesn't have 2027 rows
+yet (its 2027 branch is "as of 1 January 2027," still months out) rather than
+a bug in our fix. **Follow-up match-rate query result (2026-09-24), Production migration
+still in progress but querying became available:** `Total_Employers` 4,950;
+`Has_2026` 4,937 (99.7%); `Has_2027` 4,731 (95.6%); `Has_Both` 4,729. Confirms
+the earlier 5-row NULL-2027 sample was just an artifact of `LIMIT 20` with no
+`ORDER BY`, not a systemic gap — the `de`/`de26` joins are both matching at
+the expected rate. **Gold side of the fix confirmed working.**
+
+**Cube check, result (2026-09-24):** `DS_EMPLOYER_ENROLLMENT_SUMMARY` returns
+the expected 4 rows (Eligible Count/Covered Count × 2026/2027, no NULL year)
+— row/year structure of the fix deployed correctly. **But the `Total`
+(`SUM(EmployeeCount)`) column is blank/NULL for all 4 rows.** Ruled out as a
+`vDimEmployer` data issue: a direct query against `vDimEmployer` confirms
+plenty of non-null source data (2027: 5,151/9,487 rows have `EligibleCount`,
+4,884/9,487 have `HealthCoveredCount`; 2026: 5,228/9,487 and 4,957/9,487
+respectively) — nowhere near all-NULL, so `SUM(...)` should produce a real
+number, not blank. **Working theory: this is the same stuck-deployment
+pattern hit earlier today on this exact object** (see "Stuck Datasphere
+deployment" section above) — the row/column structure redeployed but the
+computed values didn't refresh. Ruled out: stale persistence (object's Data Access is **Virtual**, live
+query, not Persisted — deployed cleanly Sep 24 13:18:26). Ruled out via an
+isolated 2-branch reproduction (`CAST(NULL AS DECIMAL)` unioned with a real
+`SUM("EligibleCount")`): the real value came through fine (48,373), so an
+untyped-DECIMAL-precision UNION ALL conflict is NOT the cause either.
+
+**RESOLVED (2026-09-25) — false alarm, display bug not a data bug.** After
+Production migration completed, the blank-Total symptom reproduced
+identically there, which ruled out stale Quality-space caching. A long
+diagnostic chain followed: confirmed `vDimEmployer` source data is correct
+(isolated block 9/10 SQL, run standalone, always returned correct totals in
+both Quality and Production); ruled out a type-derivation issue (explicit
+`CAST(... AS DECIMAL(18,2))` added to every `EmployeeCount` expression across
+all 19 blocks — SAP's own validation dialog confirmed the column had
+previously been auto-derived as `Integer`, which was a real, if ultimately
+unrelated, latent risk worth fixing regardless); ruled out a HANA UNION ALL
+optimizer quirk (wrapped blocks 9/10's aggregation in an explicit derived
+table); ruled out a stray Unit/Currency semantic association on the
+`EmployeeCount` measure (Model Properties showed Semantic Type: None); ruled
+out a stale/cross-space `vDimEmployer` binding (Impact and Lineage confirmed
+the cube reads the same live, same-space object used in every direct test).
+**Root cause, finally confirmed:** casting the aggregate to `VARCHAR` in the
+check query revealed the real numbers were there all along (54,408 / 53,355
+Eligible Count 2026/2027; 32,707 / 32,245 Covered Count 2026/2027, matching
+every isolated test exactly) — the SQL editor's own data grid was simply
+failing to *render* `Decimal(18,2)` values for this column/query shape. The
+"Persisting or replicating objects can solve data viewing delays" banner
+shown on every affected screenshot was the actual clue the whole time.
+
+**Net result: both fixes (year-mapping remap, and the defensive explicit
+`DECIMAL(18,2)` typing across the cube) are correctly deployed in Production
+and the underlying data is fully correct.** No further changes needed on
+this object.
+
+**Still open, unaffected by this fix:** the underlying `vDimEmployer`
+`EligibleCount`/`HealthCoveredCount` data-quality issue (swinging totals,
+Ahmed independently triaging) — this fix only restores the year-mapping,
+it does not touch that separate, still-unresolved issue. No permanent
+fix applied there per Blair's standing instruction.
