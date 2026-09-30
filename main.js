@@ -539,7 +539,7 @@
                 </div>
             </div>
 
-            <div class="section-title">Employer Selection</div>
+            <div class="section-title">Employer Election</div>
             <div class="grid" id="employerTiles"></div>
 
             <div class="section-title">Breakdowns</div>
